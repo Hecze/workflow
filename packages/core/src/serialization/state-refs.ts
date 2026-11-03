@@ -8,6 +8,7 @@ import {
   opsBytes,
   type StateLineage,
   type StateOp,
+  StateRefs,
   setLineage,
 } from '../state.js';
 
@@ -113,8 +114,12 @@ export class StateContext {
       this.addSource(sourceId, value);
       return { kind: 'source', id: sourceId, value: shallowCopy(value) };
     }
+    // Writing references is opt-in; reading them is always supported, so runs
+    // that stored references stay readable after the setting is turned off.
     const lineage = lineageOf(value);
-    return lineage === undefined ? false : this.reduceTracked(value, lineage);
+    return lineage === undefined || !StateRefs.enabled()
+      ? false
+      : this.reduceTracked(value, lineage);
   };
 
   /** devalue reducer for the strings inside a state change that a source already holds. */
@@ -333,7 +338,7 @@ export class StateContext {
   }
 }
 
-export { StateRefs } from '../state.js';
+export { StateRefs };
 
 const bindings = globalSingleton(
   '@workflow/core//state-ref-contexts',

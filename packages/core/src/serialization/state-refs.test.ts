@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { lineageOf, produce } from '../state.js';
 import { decodeFormatPrefix } from './format.js';
 import { markStateSource, StateContext } from './state-refs.js';
@@ -36,6 +36,27 @@ function session() {
 }
 
 describe('workflow/state values stored by reference', () => {
+  beforeAll(() => {
+    process.env.WORKFLOW_STATE_REFS = '1';
+  });
+  afterAll(() => {
+    delete process.env.WORKFLOW_STATE_REFS;
+  });
+
+  it('stores values in full while the setting is off, and still reads references', () => {
+    const { body, output1 } = session();
+    const v1 = read(output1, body).session;
+    delete process.env.WORKFLOW_STATE_REFS;
+    try {
+      const plain = write({ session: v1 }, body);
+      expect(text(plain)).not.toContain('StateRefV1');
+      expect(read(plain, new StateContext()).session).toStrictEqual(v1);
+      expect(read(output1, new StateContext()).session).toStrictEqual(v1);
+    } finally {
+      process.env.WORKFLOW_STATE_REFS = '1';
+    }
+  });
+
   it('stores the first result whole, later inputs as references and outputs as changes', () => {
     const { body, output1 } = session();
     expect(text(output1)).toContain('"full"');
