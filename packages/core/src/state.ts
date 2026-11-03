@@ -108,6 +108,11 @@ export function diffState(
 ): StateOp[] {
   if (Object.is(base, next)) return out;
   if (Array.isArray(base) && Array.isArray(next)) {
+    // Holes are skipped by element comparisons, so a sparse array is stored whole.
+    if (hasHoles(base) || hasHoles(next)) {
+      out.push({ op: 'set', path, value: next });
+      return out;
+    }
     if (
       next.length >= base.length &&
       base.every((value, i) => Object.is(value, next[i]))
@@ -139,6 +144,11 @@ export function diffState(
   }
   out.push({ op: 'set', path, value: next });
   return out;
+}
+
+function hasHoles(array: readonly unknown[]): boolean {
+  for (let i = 0; i < array.length; i++) if (!(i in array)) return true;
+  return false;
 }
 
 /** @internal */

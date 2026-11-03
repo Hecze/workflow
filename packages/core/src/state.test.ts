@@ -131,3 +131,37 @@ describe('state types and keys', () => {
     expect(({} as Record<string, unknown>).a).toBeUndefined();
   });
 });
+
+describe('sparse arrays', () => {
+  it('records filling a hole', () => {
+    const base = { values: new Array<string>(2) };
+    const next = produce(base, (draft) => {
+      draft.values[0] = 'hello';
+    });
+    expect(next.values[0]).toBe('hello');
+    expect(1 in next.values).toBe(false);
+    const rebuilt = applyStateOps(base, diffState(base, next)) as typeof base;
+    expect(rebuilt.values[0]).toBe('hello');
+    expect(1 in rebuilt.values).toBe(false);
+  });
+
+  it('tells a hole from an explicit undefined', () => {
+    const base = { values: new Array<unknown>(1) };
+    const next = produce(base, (draft) => {
+      draft.values[0] = undefined;
+    });
+    const rebuilt = applyStateOps(base, diffState(base, next)) as typeof base;
+    expect(0 in rebuilt.values).toBe(true);
+  });
+
+  it('keeps holes when appending after them', () => {
+    const base = { values: [1, , 3] as unknown[] };
+    const next = produce(base, (draft) => {
+      draft.values.push(4);
+    });
+    const rebuilt = applyStateOps(base, diffState(base, next)) as typeof base;
+    expect(rebuilt.values).toHaveLength(4);
+    expect(1 in rebuilt.values).toBe(false);
+    expect(rebuilt.values[3]).toBe(4);
+  });
+});
