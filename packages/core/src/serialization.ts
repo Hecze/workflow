@@ -102,6 +102,9 @@ import {
   stateContextForGlobal,
 } from './serialization/state-refs.js';
 import * as stepModule from './serialization/step.js';
+
+export { createStateResolver, type StateResolver } from './state-resolver.js';
+
 import {
   type FormatPrefix,
   isFormatPrefix,
