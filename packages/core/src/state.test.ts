@@ -129,6 +129,33 @@ describe('state types and keys', () => {
     expect(rebuilt.constructor).toBe('y');
     expect(rebuilt.prototype).toEqual([1, 2]);
     expect(({} as Record<string, unknown>).a).toBeUndefined();
+
+describe('produce with a rebuilt value', () => {
+  it('records only what differs when the recipe returns copies', () => {
+    const base = {
+      history: [{ role: 'user', content: 'a' }],
+      state: { runs: [1], status: 'idle' },
+    };
+    const copy = structuredClone(base);
+    const next = produce(base, () => ({
+      history: [...copy.history, { role: 'assistant', content: 'b' }],
+      state: { runs: [...copy.state.runs, 2], status: 'idle' },
+    }));
+    expect(lineageOf(next)?.ops).toBeUndefined();
+    expect(diffState(base, next)).toEqual([
+      {
+        op: 'append',
+        path: ['history'],
+        items: [{ role: 'assistant', content: 'b' }],
+      },
+      { op: 'append', path: ['state', 'runs'], items: [2] },
+    ]);
+    expect(Object.isFrozen(next)).toBe(true);
+  });
+
+  it('returns the base when a rebuilt copy holds the same data', () => {
+    const base = { at: new Date(0), list: [{ a: 1 }] };
+    expect(produce(base, () => structuredClone(base))).toBe(base);
   });
 });
 

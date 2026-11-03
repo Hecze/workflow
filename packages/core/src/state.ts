@@ -102,6 +102,31 @@ function newId(): string {
 
 /**
  * @internal
+ * Whether two state values hold the same data: identical, or equal plain
+ * objects, arrays, dates and byte arrays. Lets a recipe return rebuilt copies
+ * without every copied subtree counting as a change.
+ */
+export function sameState(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a instanceof Date && b instanceof Date)
+    return a.getTime() === b.getTime();
+  if (a instanceof Uint8Array && b instanceof Uint8Array)
+    return a.length === b.length && a.every((byte, i) => byte === b[i]);
+  if (Array.isArray(a) && Array.isArray(b))
+    return a.length === b.length && a.every((v, i) => sameState(v, b[i]));
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const keys = Object.keys(a);
+    return (
+      Object.getPrototypeOf(a) === Object.getPrototypeOf(b) &&
+      keys.length === Object.keys(b).length &&
+      keys.every((k) => Object.hasOwn(b, k) && sameState(a[k], b[k]))
+    );
+  }
+  return false;
+}
+
+/**
+ * @internal
  * The changes from `base` to `next`, found by identity: immer shares every
  * unchanged subtree, so only changed paths are visited. An array that only grew
  * at the end becomes one `append`; any other array change replaces the array.
@@ -121,7 +146,7 @@ export function diffState(
     }
     if (
       next.length >= base.length &&
-      base.every((value, i) => Object.is(value, next[i]))
+      base.every((value, i) => sameState(value, next[i]))
     ) {
       if (next.length > base.length)
         out.push({ op: 'append', path, items: next.slice(base.length) });
@@ -157,7 +182,7 @@ export function diffState(
       out.push({ op: 'order', path, keys: nextKeys });
     return out;
   }
-  out.push({ op: 'set', path, value: next });
+  if (!sameState(base, next)) out.push({ op: 'set', path, value: next });
   return out;
 }
 
@@ -187,8 +212,11 @@ export function produce<T>(
   const next = engine.produce(base as any, recipe as any) as Immutable<T>;
   if (Object.is(next, base) || next === null || typeof next !== 'object')
     return next;
-  const from = lineageOf(base);
   const ops = diffState(base, next);
+  // A recipe that returns a rebuilt copy with the same data changed nothing.
+  if (ops.length === 0 && base !== null && typeof base === 'object')
+    return base as Immutable<T>;
+  const from = lineageOf(base);
   setLineage(next as object, {
     logId: from?.logId ?? newId(),
     version: newId(),
