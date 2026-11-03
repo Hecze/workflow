@@ -90,7 +90,8 @@ function deepFreeze(value: unknown): void {
 }
 
 function shallowCopy(value: unknown): unknown {
-  if (Array.isArray(value)) return [...value];
+  // slice(), not spread: holes in a sparse array must stay holes.
+  if (Array.isArray(value)) return value.slice();
   return Object.getPrototypeOf(value) === null
     ? Object.assign(Object.create(null) as Dict, value)
     : { ...(value as object) };

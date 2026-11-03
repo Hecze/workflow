@@ -107,6 +107,17 @@ describe('workflow/state values stored by reference', () => {
     expect(read(output2, cold(output1, output2)).history).toEqual([]);
   });
 
+  it('keeps the holes of a sparse array stored in full', () => {
+    const body = new StateContext();
+    const values = produce([1] as unknown[], (d) => {
+      d[2] = 3;
+    });
+    const back = read(write({ values }, body), new StateContext())
+      .values as unknown[];
+    expect(back).toHaveLength(3);
+    expect(1 in back).toBe(false);
+  });
+
   it('still stores an append to a top-level array as a patch', () => {
     const body = new StateContext();
     const first = produce([] as Message[], (d) => {
