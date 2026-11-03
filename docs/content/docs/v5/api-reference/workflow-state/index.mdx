@@ -107,6 +107,8 @@ const input = hydrateData(stepInput, { ...observabilityRevivers, ...resolver.rev
 
 Pass decrypted payloads. Keep one resolver per run and reuse it across inspections. Without one, references and changes display as placeholders.
 
+A web inspector built on `@workflow/web-shared` can use `createRunStateHydrator()` instead. It reads the run's history through the loaders you give it, only the first time a value needs it, and also handles encrypted and compressed payloads. The Workflow web UI uses it for its span details.
+
 ## Rules
 
 - **Use `produce` from `workflow/state`.** Values made by `immer`'s own `produce`, by spreading, or by building a new object are valid but are stored in full, because Workflow can't tell what changed.
