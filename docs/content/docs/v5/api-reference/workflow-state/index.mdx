@@ -1,0 +1,104 @@
+---
+title: workflow/state
+description: Immutable state with an immer-style produce, stored without repeating unchanged data between steps.
+type: overview
+summary: Use workflow/state for state that grows across many steps, such as a conversation, so each step stores only what it changed.
+related:
+  - /docs/api-reference/workflow-state/produce
+  - /docs/foundations/serialization
+---
+
+<Callout type="warn">
+`workflow/state` is experimental. Its API and storage format may change in a minor release.
+</Callout>
+
+`workflow/state` gives you an immer-style [`produce()`](/docs/api-reference/workflow-state/produce) for state that you pass from step to step. You write ordinary update code, and Workflow stores each step's state without repeating what earlier steps already stored.
+
+## The problem it solves
+
+Step arguments and return values are [passed by value](/docs/foundations/serialization#pass-by-value-semantics): every step stores its own full copy of what it is given. That is fine for small values, but state that grows with every step, such as an agent's conversation history, is stored again in full by each step that receives it:
+
+| Step | History passed in | Stored by this step |
+|---|---|---|
+| 1 | 2 messages | 2 messages |
+| 2 | 4 messages | 4 messages |
+| 3 | 6 messages | 6 messages |
+| … | … | … |
+| 100 | 200 messages | 200 messages |
+
+The total grows with the square of the number of steps. Large payloads also take longer to write and read on every step.
+
+## How it works
+
+Values returned by `produce()` remember which value they were produced from and what changed. With [state references enabled](#enabling-state-references), Workflow uses that to store:
+
+- **Step inputs** as a reference to a version the run's log already holds.
+- **Step outputs** as only the change from the version they were produced from, such as "append these 2 messages".
+- **Long strings** that already arrived in a hook payload or the run's input as a reference to that payload.
+
+On replay, Workflow rebuilds each version from the outputs it already reads, so your code always receives ordinary values. Storage grows with the size of the changes, not with steps × state size.
+
+## Usage
+
+Return a `produce()` result from a step and keep the returned value in the workflow:
+
+```typescript title="workflows/chat.ts" lineNumbers
+import { createHook } from "workflow";
+import { produce, type Immutable } from "workflow/state"; // [!code highlight]
+
+type Message = { role: "user" | "assistant"; content: string };
+
+declare function generateReply(history: readonly Message[]): Promise<string>; // @setup
+
+export async function chatWorkflow(chatId: string) {
+  "use workflow";
+
+  let history: Immutable<Message[]> = [];
+  using hook = createHook<{ text: string }>({ token: `chat:${chatId}` });
+
+  for await (const { text } of hook) {
+    history = await replyStep(history, text); // [!code highlight]
+  }
+}
+
+async function replyStep(history: Immutable<Message[]>, text: string) {
+  "use step";
+
+  const reply = await generateReply([...history, { role: "user", content: text }]);
+  return produce(history, (draft) => { // [!code highlight]
+    draft.push({ role: "user", content: text }, { role: "assistant", content: reply }); // [!code highlight]
+  }); // [!code highlight]
+}
+```
+
+`replyStep` reads `history` like any array. Inside the recipe you edit a draft; the step returns a new frozen value and the original is unchanged.
+
+## When to use it
+
+Use `workflow/state` when:
+
+- State grows across many steps, such as chat history, agent memory or an accumulating report.
+- The same state is passed into step after step, and each step changes a small part of it.
+
+You don't need it for small values or values that are replaced wholesale each step. Those are stored in full either way.
+
+## Enabling state references
+
+Set `WORKFLOW_STATE_REFS=1` where workflows run (see [Runtime tuning](/docs/configuration/runtime-tuning#workflow_state_refs)). Without it, `produce()` still works and values are stored in full, so you can adopt the API first and enable references later.
+
+References only point inside the same run. A value passed to another run, for example through `start()`, is stored in full.
+
+## Rules
+
+- **Use `produce` from `workflow/state`.** Values made by `immer`'s own `produce`, by spreading, or by building a new object are valid but are stored in full, because Workflow can't tell what changed.
+- **Treat results as read-only.** Results are frozen, like immer's. Make the next change with another `produce()` call.
+- **Keep the state to plain data.** Plain objects, arrays, strings, numbers, booleans, `null`, `Date` and `Uint8Array` are supported; dates and byte arrays are replaced whole. Other values, such as class instances or streams, belong outside this state.
+- **Using `immer` alongside is fine.** Workflow uses its own private copy, so your app's immer settings don't affect it. Don't call one library's `produce` inside the other's recipe.
+
+## Functions
+
+<Cards>
+    <Card href="/docs/api-reference/workflow-state/produce" title="produce()">
+        Create the next version of a state value by editing a draft.
+    </Card>
+</Cards>

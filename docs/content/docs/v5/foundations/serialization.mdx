@@ -116,6 +116,10 @@ async function updateUserStep(user: { id: string; name: string; email: string })
 }
 ```
 
+<Callout>
+For state that grows across many steps, such as a conversation history passed into every step, see [`workflow/state`](/docs/api-reference/workflow-state). Its `produce()` lets Workflow store each step's change instead of a new full copy.
+</Callout>
+
 **Custom classes:**
 
 - Class instances that implement [`WORKFLOW_SERIALIZE` and `WORKFLOW_DESERIALIZE`](#custom-class-serialization)

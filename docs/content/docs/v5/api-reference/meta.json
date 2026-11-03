@@ -6,6 +6,7 @@
     "workflow-api",
     "workflow-runtime",
     "workflow-observability",
+    "workflow-state",
     "workflow-next",
     "workflow-nitro",
     "workflow-nuxt",

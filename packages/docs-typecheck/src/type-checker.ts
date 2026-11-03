@@ -77,6 +77,7 @@ const compilerOptions: ts.CompilerOptions = {
       path.join(repoRoot, 'packages/workflow/dist/observability'),
     ],
     'workflow/runtime': [path.join(repoRoot, 'packages/workflow/dist/runtime')],
+    'workflow/state': [path.join(repoRoot, 'packages/workflow/dist/state')],
     'workflow/next': [path.join(repoRoot, 'packages/workflow/dist/next.d.cts')],
     'workflow/nitro': [path.join(repoRoot, 'packages/workflow/dist/nitro')],
     'workflow/nuxt': [path.join(repoRoot, 'packages/workflow/dist/nuxt')],

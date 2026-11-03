@@ -45,6 +45,14 @@ The runtime reads these variables where workflows execute. Set them on the deplo
 - The kill switch for the wait. Worlds that do not implement waiting are already on the interval path, so this changes nothing for them.
 - Read by the process awaiting `Run.returnValue`, like the interval above.
 
+## State storage
+
+### `WORKFLOW_STATE_REFS`
+
+- Default: unset (off)
+- Set to `1` to store [`workflow/state`](/docs/api-reference/workflow-state) values by reference: a step input that carries a `produce()` result stores a reference to its version, and a step output stores only its change. Values not made by `produce()` are unaffected.
+- Experimental. Set it on every deployment that runs the workflow, and keep it set while runs that used it are still in progress: those runs' stored state can only be read with it on.
+
 ## Replay and queue delivery
 
 ### `WORKFLOW_REPLAY_TIMEOUT_MS`

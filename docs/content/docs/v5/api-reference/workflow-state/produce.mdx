@@ -1,0 +1,62 @@
+---
+title: produce
+description: Create the next version of a state value by editing a draft, like immer's produce.
+type: reference
+summary: Use produce to update state passed between steps so Workflow can store only what changed.
+related:
+  - /docs/api-reference/workflow-state
+---
+
+<Callout type="warn">
+`produce` is experimental. See [`workflow/state`](/docs/api-reference/workflow-state).
+</Callout>
+
+Creates the next version of `base` by running `recipe` against a mutable draft. It behaves like [immer's `produce`](https://immerjs.github.io/immer/produce): the result is frozen, shares every unchanged part with `base`, and `base` itself is not modified.
+
+```typescript lineNumbers
+import { produce } from "workflow/state"; // [!code highlight]
+
+const todos = [{ title: "Write docs", done: false }];
+
+const next = produce(todos, (draft) => { // [!code highlight]
+  draft[0].done = true; // [!code highlight]
+  draft.push({ title: "Ship", done: false }); // [!code highlight]
+}); // [!code highlight]
+
+todos[0].done; // false
+next[0].done; // true
+```
+
+## API signature
+
+{/* @skip-typecheck: signature only */}
+```typescript
+function produce<T>(
+  base: T | Immutable<T>,
+  recipe: (draft: Draft<T>) => void | T | Immutable<T>
+): Immutable<T>;
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `base` | `T \| Immutable<T>` | The current value: a plain value, or a value returned by an earlier `produce()` call. |
+| `recipe` | `(draft: Draft<T>) => void \| T` | Edits `draft` in place. Returning a value replaces the whole result with it. |
+
+### Returns
+
+A frozen `Immutable<T>`. When the recipe changes nothing, `base` is returned unchanged.
+
+### Types
+
+| Type | Description |
+|------|-------------|
+| `Immutable<T>` | A deeply read-only view of `T`. |
+| `Draft<T>` | A deeply mutable view of `T`, used inside the recipe. |
+
+Both have the same shape as immer's types of the same name.
+
+## Storage
+
+When [state references are enabled](/docs/api-reference/workflow-state#enabling-state-references), a `produce()` result returned from a step is stored as only its change from `base`, and a later step that receives it stores a reference instead of a copy. Replacing the whole value (returning from the recipe, or rewriting an array other than appending to it) is stored as a new full value.
