@@ -88,10 +88,14 @@ Set `WORKFLOW_STATE_REFS=1` where workflows run (see [Runtime tuning](/docs/conf
 
 References only point inside the same run. Values that leave it are stored in full: run inputs, including values passed to another run through `start()`, and workflow return values, so `run.returnValue` reads them as usual. The dashboard and CLI show references and changes as placeholders.
 
+## Inspecting stored state
+
+A step input that holds a reference, and a step output that holds a change, can only be rebuilt from the run's earlier records. Workflow does that during replay, so your code always receives whole values. Tools that read one payload on its own, such as the dashboard, the CLI and custom inspection code using [`hydrateData()`](/docs/api-reference/workflow-observability/hydrate-data) with `observabilityRevivers`, show references and changes as placeholders. Hook payloads, run inputs and workflow return values are always stored whole and display normally.
+
 ## Rules
 
 - **Use `produce` from `workflow/state`.** Values made by `immer`'s own `produce`, by spreading, or by building a new object are valid but are stored in full, because Workflow can't tell what changed.
-- **Treat results as read-only.** Results are frozen, like immer's. Make the next change with another `produce()` call.
+- **Treat results as read-only.** Results are frozen, like immer's, and so are values rebuilt from references, including after the setting is turned off. Step code that edits its inputs in place should work on a copy. Make the next change with another `produce()` call.
 - **Keep the state to plain data.** Plain objects, arrays, strings, numbers, booleans, `null`, `Date` and `Uint8Array` are supported; dates and byte arrays are replaced whole. Other values, such as class instances or streams, belong outside this state.
 - **Using `immer` alongside is fine.** Workflow uses its own private copy, so your app's immer settings don't affect it. Don't call one library's `produce` inside the other's recipe.
 

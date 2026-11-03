@@ -59,4 +59,21 @@ Both have the same shape as immer's types of the same name.
 
 ## Storage
 
-When [state references are enabled](/docs/api-reference/workflow-state#enabling-state-references), a `produce()` result returned from a step is stored as only its change from `base`, and a later step that receives it stores a reference instead of a copy. Replacing the whole value (returning from the recipe, or rewriting an array other than appending to it) is stored as a new full value.
+When [state references are enabled](/docs/api-reference/workflow-state#enabling-state-references), a later step that receives a `produce()` result stores a reference instead of a copy, and the step that returned it stores only its change from `base`. Workflow computes the change by comparing the result with `base`, so it doesn't depend on how the recipe made the result:
+
+- Editing the draft and returning a rebuilt replacement both store only what differs. Comparisons are by value, so a recipe can return copies of unchanged data.
+- Growth at the end of an array is stored as an append. Other array edits are stored per element when the length is unchanged, and as the new array otherwise. Arrays with holes are stored whole.
+- The result is stored whole when its base isn't in the run's log, and again once the changes stored since its last whole copy outgrow the value itself.
+
+```typescript lineNumbers
+import { produce } from "workflow/state";
+
+const base = { history: ["Hello", "Hi!"], status: "idle" };
+
+// A recipe returning a rebuilt value still stores only the change:
+// an append of "Next?" to `history`, and a set of `status`.
+const next = produce(base, () => ({
+  history: [...base.history, "Next?"],
+  status: "waiting",
+}));
+```
