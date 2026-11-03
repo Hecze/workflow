@@ -333,14 +333,7 @@ export class StateContext {
   }
 }
 
-export const StateRefs = {
-  enabled(): boolean {
-    return typeof process !== 'undefined' && process.env
-      ? process.env.WORKFLOW_STATE_REFS === '1'
-      : (globalThis as Record<string, unknown>).__workflowStateRefsEnabled ===
-          true;
-  },
-};
+export { StateRefs } from '../state.js';
 
 const bindings = globalSingleton(
   '@workflow/core//state-ref-contexts',
