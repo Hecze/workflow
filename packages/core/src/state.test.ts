@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import type { Draft, Immutable } from './state.js';
+import type { Draft, Immutable, StateLineage } from './state.js';
 import { applyStateOps, diffState, lineageOf, produce } from './state.js';
 
 type Message = { role: string; content: string };
@@ -33,8 +33,8 @@ describe('produce', () => {
     const second = produce(first, (draft) => {
       draft.count = 2;
     });
-    const a = lineageOf(first)!;
-    const b = lineageOf(second)!;
+    const a = lineageOf(first) as StateLineage;
+    const b = lineageOf(second) as StateLineage;
     expect(a.base).toBeUndefined();
     expect(b.logId).toBe(a.logId);
     expect(b.base).toBe(a.version);
@@ -155,7 +155,9 @@ describe('sparse arrays', () => {
   });
 
   it('keeps holes when appending after them', () => {
-    const base = { values: [1, , 3] as unknown[] };
+    const values: unknown[] = [1];
+    values[2] = 3;
+    const base = { values };
     const next = produce(base, (draft) => {
       draft.values.push(4);
     });

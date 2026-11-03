@@ -166,6 +166,7 @@ export function opsBytes(ops: readonly StateOp[]): number {
  */
 export function produce<T>(
   base: T | Immutable<T>,
+  // biome-ignore lint/suspicious/noConfusingVoidType: like immer, a recipe either returns nothing or a replacement
   recipe: (draft: Draft<T>) => void | T | Immutable<T>
 ): Immutable<T> {
   const next = engine.produce(base as any, recipe as any) as Immutable<T>;
