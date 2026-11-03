@@ -59,6 +59,10 @@ export async function deserialize(
     options?.compressionStats
   );
 
+  if (options?.recoverStateContext && !options.stateContext) {
+    options.stateContext = await options.recoverStateContext(decrypted);
+  }
+
   if (!(decrypted instanceof Uint8Array)) {
     if (devalueCodec.deserializeLegacy) {
       return devalueCodec.deserializeLegacy(decrypted, 'step', options);

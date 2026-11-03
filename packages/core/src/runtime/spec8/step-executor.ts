@@ -70,6 +70,10 @@ import {
   settleReleasedStepStreams,
 } from '../step-streams.js';
 import { isUnserializableStepInputPlaceholder } from '../unserializable-step.js';
+import {
+  type StateContext,
+  stateContextForData,
+} from '../../serialization/state-refs.js';
 import { safeWaitUntil } from '../wait-until.js';
 import {
   isOptimisticInlineStartEnabled,
@@ -129,6 +133,13 @@ export interface StepExecutorParams {
    * carries no payload (the legacy contract).
    */
   lazyStepInput?: SerializedData;
+  /**
+   * The replay's `workflow/state` context, for an inline step: its input's
+   * references resolve against it, and its output's changes are encoded
+   * against it. Absent elsewhere; the input's own binding or a recovery
+   * from the run's log is used instead.
+   */
+  stateContext?: StateContext;
   /**
    * Pre-claimed inline start: the suspension handler committed (or lost) this
    * step's `step_created` + `step_started` pair inside its batched fan-out
@@ -966,6 +977,7 @@ export async function executeStep(
       // Use the provided encryption key when available, otherwise resolve
       // through the memoized accessor declared at the top of this trace.
       const encryptionKey = params.encryptionKey ?? (await getEncryptionKey());
+      let stateContext = params.stateContext ?? stateContextForData(step.input);
       const hydratedInput = await trace(
         'step.hydrate',
         {},
@@ -982,9 +994,16 @@ export async function executeStep(
             streamStates,
             // A workflow-created writable passed into an optimistic step can
             // emit chunks before run_started lands, just like getWritable().
-            optimisticStart ? params.runReadyBarrier : undefined
+            optimisticStart ? params.runReadyBarrier : undefined,
+            stateContext
           );
+          stateContext ??= stateContextForData(hydrated);
           const durationMs = Date.now() - startTime;
+          if (stateContext)
+            hydrateSpan?.setAttributes({
+              'workflow.state_refs.recovery_fetches':
+                stateContext.stats.recoveryFetches,
+            });
           hydrateSpan?.setAttributes({
             ...Attribute.StepArgumentsCount(hydrated.args.length),
             ...Attribute.QueueDeserializeTimeMs(durationMs),
@@ -1205,7 +1224,8 @@ export async function executeStep(
           // write on the run-ready barrier. Undefined on the await path.
           optimisticStart ? params.runReadyBarrier : undefined,
           ops,
-          true
+          true,
+          stateContext
         );
         const durationMs = Date.now() - startTime;
         dehydrateSpan?.setAttributes({

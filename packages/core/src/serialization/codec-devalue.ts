@@ -25,6 +25,12 @@ import {
   getStepFunctionReducer,
   getStepFunctionReviver,
 } from './reducers/step-function.js';
+import {
+  STATE_REF_REDUCER,
+  STATE_SOURCE_REDUCER,
+  StateContext,
+  stateContextForGlobal,
+} from './state-refs.js';
 import { type Reducers, type Revivers, SerializationFormat } from './types.js';
 
 const encoder = new TextEncoder();
@@ -118,6 +124,15 @@ function getReviversForMode(
   return base as Record<string, (value: any) => any>;
 }
 
+/** The replay's state context for this payload, or a fresh one (values are then written whole). */
+function stateContextFor(options?: CodecOptions): StateContext {
+  return (
+    options?.stateContext ??
+    stateContextForGlobal(options?.global ?? globalThis) ??
+    new StateContext()
+  );
+}
+
 // ---- Codec implementation ----
 
 export const devalueCodec: Codec = {
@@ -139,6 +154,9 @@ export const devalueCodec: Codec = {
     // inside a workflow VM cannot execute sandbox code behind our back.
     // Where workflow code must run (getters, proxies, custom serializers),
     // the execution is recorded into `options.guestCodeStats`.
+    const state = stateContextFor(options);
+    reducers[STATE_REF_REDUCER] = state.reduce;
+    reducers[STATE_SOURCE_REDUCER] = state.reduceSourceRef;
     const str = withGuestCodeStats(options?.guestCodeStats, () =>
       stringify(value, reducers, { operations: hardenedStringifyOperations })
     );
@@ -155,6 +173,9 @@ export const devalueCodec: Codec = {
       options?.global,
       options?.extraRevivers
     );
+    const state = stateContextFor(options);
+    revivers[STATE_REF_REDUCER] = state.revive;
+    revivers[STATE_SOURCE_REDUCER] = state.reviveSourceRef;
     const str = decoder.decode(data);
     return parse(str, revivers, parseOptions);
   },

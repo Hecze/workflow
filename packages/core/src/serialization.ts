@@ -93,6 +93,14 @@ import {
   getStepFunctionReducer,
   getStepFunctionReviver,
 } from './serialization/reducers/step-function.js';
+import {
+  bindStateContextData,
+  type StateContext,
+  stateContextForData,
+  stateContextForGlobal,
+} from './serialization/state-refs.js';
+import { recoverStateContext } from './serialization/state-recovery.js';
+import type { CodecOptions } from './serialization/codec.js';
 import * as stepModule from './serialization/step.js';
 import {
   type FormatPrefix,
@@ -4122,6 +4130,9 @@ export async function dehydrateStepArguments(
       compressionStats,
       guestCodeStats,
     });
+    // An inline step hydrates this input in the same invocation; give it the
+    // replay's state context so its references resolve without recovery.
+    bindStateContextData(result, stateContextForGlobal(global));
     await recordCompression(compressionStats, 'serialize');
     await recordGuestCodeExecutions(guestCodeStats);
     return result;
@@ -4145,11 +4156,15 @@ export async function hydrateStepArguments(
   extraRevivers: Record<string, (value: any) => any> = {},
   deploymentId?: string,
   streamStates?: FlushableStreamState[],
-  runReadyBarrier?: Promise<unknown>
+  runReadyBarrier?: Promise<unknown>,
+  stateContext?: StateContext
 ): Promise<any> {
   const compressionStats: CompressionStats = {};
-  const result = await stepModule.deserialize(value, key, {
+  const options: CodecOptions = {
     global,
+    stateContext: stateContext ?? stateContextForData(value),
+    recoverStateContext: (data: unknown) =>
+      recoverStateContext(runId, key, data),
     extraRevivers: {
       ...getStreamAndRequestRevivers(
         getStepRevivers(
@@ -4165,7 +4180,11 @@ export async function hydrateStepArguments(
       ...extraRevivers,
     },
     compressionStats,
-  });
+  };
+  const result = await stepModule.deserialize(value, key, options);
+  // The step's output must be encoded against the same context (possibly just
+  // recovered) so a state change can refer to the version it builds on.
+  bindStateContextData(result, options.stateContext);
   await recordCompression(compressionStats, 'deserialize');
   return result;
 }
@@ -4203,7 +4222,8 @@ export async function dehydrateStepReturnValue(
   // sink. Undefined outside turbo / on the await path.
   runReadyBarrier?: Promise<unknown>,
   readbackOps: Promise<void>[] = ops,
-  framedAbortStreams = false
+  framedAbortStreams = false,
+  stateContext?: StateContext
 ): Promise<Uint8Array | unknown> {
   if (v1Compat) {
     const str = stringify(
@@ -4225,6 +4245,7 @@ export async function dehydrateStepReturnValue(
     const compressionStats: CompressionStats = {};
     const result = await stepModule.serialize(value, key, {
       global,
+      stateContext,
       extraReducers: getStreamAndRequestReducers(
         getStepReducers(
           global,

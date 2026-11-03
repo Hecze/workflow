@@ -35,6 +35,7 @@ import { runIdCreatedAt } from './runtime/run-id-time.js';
 import type { RunStartHook } from './runtime/start-hook-binding.js';
 import { createSeededNanoid } from './seeded-nanoid.js';
 import type { PayloadKey } from './serialization/encryption.js';
+import { bindStateContext, StateContext } from './serialization/state-refs.js';
 import {
   dehydrateWorkflowReturnValue,
   hydrateWorkflowArguments,
@@ -472,6 +473,13 @@ async function createWorkflowSessionInner(
     seed: `${workflowRun.runId}:${workflowRun.workflowName}:${workflowRun.deploymentId}`,
     fixedTimestamp,
   });
+
+  // Each replay rebuilds `workflow/state` versions from the log it reads, and
+  // inline steps resolve their inputs against the same context.
+  replayPayloadCache.stateContext = new StateContext();
+  bindStateContext(vmGlobalThis, replayPayloadCache.stateContext);
+  (vmGlobalThis as Record<string, any>).__workflowStateRefsEnabled =
+    process.env.WORKFLOW_STATE_REFS === '1';
 
   const initialInterruption = withResolvers<never>();
   let state: WorkflowSessionState = {
