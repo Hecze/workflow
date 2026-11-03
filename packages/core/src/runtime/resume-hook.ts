@@ -1,5 +1,8 @@
 import type { Span } from '@opentelemetry/api';
-import { markStateSource, StateRefs } from '../serialization/state-refs.js';
+import {
+  markStateSource,
+  stateRefsEnabled,
+} from '../serialization/state-refs.js';
 import {
   ERROR_SLUGS,
   HookForceClaimedError,
@@ -822,7 +825,7 @@ async function resumeHookAttempt<T = any>(
     const v1Compat = isLegacySpecVersion(hook.specVersion);
     // Later `workflow/state` changes may refer to this payload's strings
     // instead of storing them again.
-    if (StateRefs.enabled())
+    if (stateRefsEnabled())
       markStateSource(payload, `hook:${globalThis.crypto.randomUUID()}`);
     const dehydratedPayload = await dehydrateStepReturnValue(
       payload,

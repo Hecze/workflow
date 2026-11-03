@@ -1,5 +1,8 @@
 import type { Span } from '@opentelemetry/api';
-import { markStateSource, StateRefs } from '../serialization/state-refs.js';
+import {
+  markStateSource,
+  stateRefsEnabled,
+} from '../serialization/state-refs.js';
 import {
   EntityConflictError,
   HookConflictError,
@@ -1395,7 +1398,7 @@ export async function start<TArgs extends unknown[], TResult>(
       // webhook's `request.body` is one-shot). Resolved `true` on admission,
       // `false` on anything else.
       const streamStartGate = startHook ? withResolvers<boolean>() : undefined;
-      if (StateRefs.enabled()) markStateSource(args, `run:${runId}`);
+      if (stateRefsEnabled()) markStateSource(args, `run:${runId}`);
       const workflowArguments = await dehydrateWorkflowArguments(
         args,
         runId,

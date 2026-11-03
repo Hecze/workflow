@@ -314,16 +314,3 @@ export function applyStateOps(base: unknown, ops: readonly StateOp[]): unknown {
   }
   return value;
 }
-
-/**
- * @internal Whether `workflow/state` values are stored by reference
- * (`WORKFLOW_STATE_REFS=1`). Kept free of imports so workflow bundles can read it.
- */
-export const StateRefs = {
-  enabled(): boolean {
-    return typeof process !== 'undefined' && process.env
-      ? process.env.WORKFLOW_STATE_REFS === '1'
-      : (globalThis as Record<string, unknown>).__workflowStateRefsEnabled ===
-          true;
-  },
-};

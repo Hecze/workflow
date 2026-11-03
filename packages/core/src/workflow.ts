@@ -478,8 +478,6 @@ async function createWorkflowSessionInner(
   // inline steps resolve their inputs against the same context.
   replayPayloadCache.stateContext = new StateContext();
   bindStateContext(vmGlobalThis, replayPayloadCache.stateContext);
-  (vmGlobalThis as Record<string, any>).__workflowStateRefsEnabled =
-    process.env.WORKFLOW_STATE_REFS === '1';
 
   const initialInterruption = withResolvers<never>();
   let state: WorkflowSessionState = {

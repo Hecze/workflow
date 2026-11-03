@@ -8,7 +8,6 @@ import {
   opsBytes,
   type StateLineage,
   type StateOp,
-  StateRefs,
   setLineage,
 } from '../state.js';
 
@@ -117,7 +116,7 @@ export class StateContext {
     // Writing references is opt-in; reading them is always supported, so runs
     // that stored references stay readable after the setting is turned off.
     const lineage = lineageOf(value);
-    return lineage === undefined || !StateRefs.enabled()
+    return lineage === undefined || !stateRefsEnabled()
       ? false
       : this.reduceTracked(value, lineage);
   };
@@ -338,7 +337,10 @@ export class StateContext {
   }
 }
 
-export { StateRefs };
+/** Writing references is opt-in with `WORKFLOW_STATE_REFS=1`; reading them always works. */
+export function stateRefsEnabled(): boolean {
+  return process.env.WORKFLOW_STATE_REFS === '1';
+}
 
 const bindings = globalSingleton(
   '@workflow/core//state-ref-contexts',
