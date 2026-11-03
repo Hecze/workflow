@@ -377,7 +377,12 @@ export class StateContext {
 
 /** Writing references is opt-in with `WORKFLOW_STATE_REFS=1`; reading them always works. */
 export function stateRefsEnabled(): boolean {
-  return process.env.WORKFLOW_STATE_REFS === '1';
+  // The QuickJS workflow VM decodes payloads with its own codec, which does not
+  // read state records yet, so references are not written for it.
+  return (
+    process.env.WORKFLOW_STATE_REFS === '1' &&
+    process.env.WORKFLOW_VM !== 'quickjs'
+  );
 }
 
 const bindings = globalSingleton(
