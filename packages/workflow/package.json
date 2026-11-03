@@ -52,6 +52,10 @@
     "./nest/builder": "./dist/nest-builder.js",
     "./nest/vercel-builder": "./dist/nest-vercel-builder.js",
     "./runtime": "./dist/runtime.js",
+    "./state": {
+      "types": "./dist/state.d.ts",
+      "default": "./dist/state.js"
+    },
     "./observability": {
       "types": "./dist/observability.d.ts",
       "default": "./dist/observability.js"
