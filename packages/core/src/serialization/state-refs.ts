@@ -193,7 +193,8 @@ export class StateContext {
     // `set` would otherwise hold the value itself, which devalue would encode
     // as a reference back to this record.
     const replacesWhole =
-      lineage.ops?.some((op) => op.path.length === 0) ?? false;
+      lineage.ops?.some((op) => op.op === 'set' && op.path.length === 0) ??
+      false;
     if (
       base?.logId === logId &&
       lineage.ops !== undefined &&

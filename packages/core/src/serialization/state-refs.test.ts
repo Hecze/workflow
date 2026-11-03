@@ -107,6 +107,20 @@ describe('workflow/state values stored by reference', () => {
     expect(read(output2, cold(output1, output2)).history).toEqual([]);
   });
 
+  it('still stores an append to a top-level array as a patch', () => {
+    const body = new StateContext();
+    const first = produce([] as Message[], (d) => {
+      d.push({ role: 'user', content: 'hello' });
+    });
+    const v1 = read(write({ history: first }, body), body).history as Message[];
+    const grown = produce(v1, (d) => {
+      d.push({ role: 'user', content: 'next' });
+    });
+    const out = text(write({ history: grown }, body));
+    expect(out).toContain('"patch"');
+    expect(out).toContain('"append"');
+  });
+
   it('keeps step inputs the same size as the history grows', () => {
     const { body, output1 } = session();
     let value = read(output1, body).session;
