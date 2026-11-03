@@ -129,6 +129,8 @@ describe('state types and keys', () => {
     expect(rebuilt.constructor).toBe('y');
     expect(rebuilt.prototype).toEqual([1, 2]);
     expect(({} as Record<string, unknown>).a).toBeUndefined();
+  });
+});
 
 describe('produce with a rebuilt value', () => {
   it('records only what differs when the recipe returns copies', () => {
