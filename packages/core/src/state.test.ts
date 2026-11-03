@@ -167,3 +167,38 @@ describe('sparse arrays', () => {
     expect(rebuilt.values[3]).toBe(4);
   });
 });
+
+describe('key order', () => {
+  it('records a new key order so replay rebuilds the same object', () => {
+    const base = { a: 1, b: 2, c: 3 };
+    const next = produce(base, () => ({ c: 3, a: 1, b: 2 }));
+    const ops = diffState(base, next);
+    expect(ops).toEqual([{ op: 'order', path: [], keys: ['c', 'a', 'b'] }]);
+    expect(Object.keys(applyStateOps(base, ops) as object)).toEqual([
+      'c',
+      'a',
+      'b',
+    ]);
+  });
+
+  it('keeps the order of a key deleted and added again', () => {
+    const base = { state: { x: 1, y: 2 } };
+    const next = produce(base, (draft: any) => {
+      delete draft.state.x;
+      draft.state.x = 5;
+    });
+    const rebuilt = applyStateOps(base, diffState(base, next)) as typeof base;
+    expect(Object.keys(rebuilt.state)).toEqual(['y', 'x']);
+    expect(rebuilt.state).toEqual({ y: 2, x: 5 });
+  });
+
+  it('records nothing extra when keys are only added at the end', () => {
+    const base = { a: 1 };
+    const next = produce(base, (draft: any) => {
+      draft.b = 2;
+    });
+    expect(diffState(base, next)).toEqual([
+      { op: 'set', path: ['b'], value: 2 },
+    ]);
+  });
+});

@@ -44,6 +44,12 @@ export type StateOp =
       readonly op: 'append';
       readonly path: StatePath;
       readonly items: readonly unknown[];
+    }
+  /** The object's keys in their new order, when it is not old keys then new ones. */
+  | {
+      readonly op: 'order';
+      readonly path: StatePath;
+      readonly keys: readonly string[];
     };
 
 /** @internal */
@@ -132,14 +138,23 @@ export function diffState(
     isPlainObject(next) &&
     Object.getPrototypeOf(base) === Object.getPrototypeOf(next)
   ) {
-    for (const key of Object.keys(base))
+    const baseKeys = Object.keys(base);
+    const nextKeys = Object.keys(next);
+    for (const key of baseKeys)
       if (!Object.hasOwn(next, key))
         out.push({ op: 'del', path: [...path, key] });
-    for (const key of Object.keys(next)) {
+    for (const key of nextKeys) {
       if (!Object.hasOwn(base, key))
         out.push({ op: 'set', path: [...path, key], value: next[key] });
       else diffState(base[key], next[key], [...path, key], out);
     }
+    // Code may iterate objects in insertion order, so a changed order is a change.
+    const expected = [
+      ...baseKeys.filter((key) => Object.hasOwn(next, key)),
+      ...nextKeys.filter((key) => !Object.hasOwn(base, key)),
+    ];
+    if (expected.some((key, index) => key !== nextKeys[index]))
+      out.push({ op: 'order', path, keys: nextKeys });
     return out;
   }
   out.push({ op: 'set', path, value: next });
@@ -243,6 +258,19 @@ export function applyStateOps(base: unknown, ops: readonly StateOp[]): unknown {
         if (!Array.isArray(array))
           throw new Error('State append does not match its base');
         return [...array, ...change.items];
+      });
+    else if (change.op === 'order')
+      value = updateIn(value, change.path, 0, (object) => {
+        if (
+          !isPlainObject(object) ||
+          change.keys.length !== Object.keys(object).length ||
+          !change.keys.every((key) => Object.hasOwn(object, key))
+        )
+          throw new Error('State key order does not match its base');
+        const copy: Dict =
+          Object.getPrototypeOf(object) === null ? Object.create(null) : {};
+        for (const key of change.keys) setOwn(copy, key, object[key]);
+        return copy;
       });
     else {
       const parent = change.path.slice(0, -1);
