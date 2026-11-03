@@ -22,17 +22,15 @@ type Leaf =
   | Uint8Array
   | ((...args: any[]) => unknown);
 
+// Homomorphic mapped types keep arrays as arrays and tuples as tuples, with
+// their length and per-position types, like immer's own types.
 export type Immutable<T> = T extends Leaf
   ? T
-  : T extends ReadonlyArray<infer U>
-    ? ReadonlyArray<Immutable<U>>
-    : { readonly [K in keyof T]: Immutable<T[K]> };
+  : { readonly [K in keyof T]: Immutable<T[K]> };
 
 export type Draft<T> = T extends Leaf
   ? T
-  : T extends ReadonlyArray<infer U>
-    ? Draft<U>[]
-    : { -readonly [K in keyof T]: Draft<T[K]> };
+  : { -readonly [K in keyof T]: Draft<T[K]> };
 
 /** @internal */
 export type StatePath = readonly (string | number)[];
@@ -175,6 +173,29 @@ export function produce<T>(
   return next;
 }
 
+/**
+ * Plain-object state may have own properties named `__proto__`, `constructor`
+ * or `prototype`. Reading only own properties and writing with
+ * `defineProperty` keeps them ordinary data and never reaches a prototype.
+ */
+function ownValue(object: Dict, key: string): unknown {
+  return Object.hasOwn(object, key) ? object[key] : undefined;
+}
+function setOwn(object: Dict, key: string, value: unknown): void {
+  Object.defineProperty(object, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+function copyObject(object: Dict): Dict {
+  const copy: Dict =
+    Object.getPrototypeOf(object) === null ? Object.create(null) : {};
+  for (const key of Object.keys(object)) setOwn(copy, key, object[key]);
+  return copy;
+}
+
 /** Copies only the containers on each changed path; everything else stays shared. */
 function updateIn(
   value: unknown,
@@ -184,8 +205,6 @@ function updateIn(
 ): unknown {
   if (at === path.length) return update(value);
   const key = path[at] as string | number;
-  if (key === '__proto__' || key === 'constructor' || key === 'prototype')
-    throw new Error('Invalid state path');
   if (Array.isArray(value)) {
     const copy = value.slice();
     copy[Number(key)] = updateIn(value[Number(key)], path, at + 1, update);
@@ -193,11 +212,12 @@ function updateIn(
   }
   if (!isPlainObject(value))
     throw new Error('State change does not match its base');
-  const copy: Dict =
-    Object.getPrototypeOf(value) === null
-      ? Object.assign(Object.create(null) as Dict, value)
-      : { ...value };
-  copy[String(key)] = updateIn(value[String(key)], path, at + 1, update);
+  const copy = copyObject(value);
+  setOwn(
+    copy,
+    String(key),
+    updateIn(ownValue(value, String(key)), path, at + 1, update)
+  );
   return copy;
 }
 
@@ -219,10 +239,7 @@ export function applyStateOps(base: unknown, ops: readonly StateOp[]): unknown {
       value = updateIn(value, parent, 0, (object) => {
         if (!isPlainObject(object))
           throw new Error('State delete does not match its base');
-        const copy: Dict =
-          Object.getPrototypeOf(object) === null
-            ? Object.assign(Object.create(null) as Dict, object)
-            : { ...object };
+        const copy = copyObject(object);
         delete copy[String(key)];
         return copy;
       });

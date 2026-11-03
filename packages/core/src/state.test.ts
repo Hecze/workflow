@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { Draft, Immutable } from './state.js';
 import { applyStateOps, diffState, lineageOf, produce } from './state.js';
 
 type Message = { role: string; content: string };
@@ -83,5 +84,50 @@ describe('recorded changes', () => {
     ]);
     expect(next).toEqual({ list: [1, 2] });
     expect(base.list).toEqual([1]);
+  });
+});
+
+describe('state types and keys', () => {
+  it('keeps tuples as tuples in drafts and results', () => {
+    type Pair = [string, number];
+    expectTypeOf<Immutable<Pair>>().toEqualTypeOf<readonly [string, number]>();
+    expectTypeOf<Draft<readonly [string, number]>>().toEqualTypeOf<
+      [string, number]
+    >();
+    expectTypeOf<Immutable<{ list: string[] }>>().toEqualTypeOf<{
+      readonly list: readonly string[];
+    }>();
+    const next = produce({ pair: ['a', 1] as Pair }, (draft) => {
+      draft.pair[1] = 2;
+    });
+    expectTypeOf(next.pair).toEqualTypeOf<readonly [string, number]>();
+    expect(next.pair).toEqual(['a', 2]);
+  });
+
+  it('round-trips own properties named __proto__, constructor and prototype', () => {
+    const base = JSON.parse(
+      '{"__proto__":{"a":1},"constructor":"x","prototype":[1]}'
+    );
+    const next = produce(base, (draft: any) => {
+      draft.constructor = 'y';
+      draft.prototype.push(2);
+      draft.__proto__.a = 2;
+    });
+    const rebuilt = applyStateOps(base, diffState(base, next)) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.getPrototypeOf(rebuilt)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyNames(rebuilt).sort()).toEqual([
+      '__proto__',
+      'constructor',
+      'prototype',
+    ]);
+    expect(
+      Object.getOwnPropertyDescriptor(rebuilt, '__proto__')?.value
+    ).toEqual({ a: 2 });
+    expect(rebuilt.constructor).toBe('y');
+    expect(rebuilt.prototype).toEqual([1, 2]);
+    expect(({} as Record<string, unknown>).a).toBeUndefined();
   });
 });
