@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { lineageOf, produce } from '../state.js';
-import { decodeFormatPrefix } from './format.js';
 import {
   dehydrateWorkflowArguments,
   dehydrateWorkflowReturnValue,
   hydrateWorkflowArguments,
   hydrateWorkflowReturnValue,
 } from '../serialization.js';
+import { lineageOf, produce } from '../state.js';
+import { decodeFormatPrefix } from './format.js';
 import {
   bindStateContext,
   markStateSource,
@@ -128,10 +128,9 @@ describe('workflow/state values stored by reference', () => {
     expect(given).toStrictEqual(v1);
     const output2 = write(
       {
-        session: produce(
-          given as Session,
-          (d) => void d.history.push({ role: 'assistant', content: 'cold' })
-        ),
+        session: produce(given as Session, (d) => {
+          d.history.push({ role: 'assistant', content: 'cold' });
+        }),
       },
       retry
     );
@@ -167,7 +166,7 @@ describe('workflow/state values stored by reference', () => {
   });
 
   it('resolves hook strings to what was stored even if the revived payload is edited', () => {
-    const { body, output1 } = session();
+    const { output1 } = session();
     const message = 'Weather in Oslo for the next three days, please. '.repeat(
       4
     );
@@ -179,10 +178,9 @@ describe('workflow/state values stored by reference', () => {
     const v1 = read(output1, replay).session;
     const output2 = write(
       {
-        session: produce(
-          v1 as Session,
-          (d) => void d.history.push({ role: 'user', content: message })
-        ),
+        session: produce(v1 as Session, (d) => {
+          d.history.push({ role: 'user', content: message });
+        }),
       },
       replay
     );
@@ -227,7 +225,11 @@ describe('workflow/state values stored by reference', () => {
     const body = new StateContext();
     let value = read(
       write(
-        { s: produce({ blob: '' }, (d) => void (d.blob = 'x'.repeat(20_000))) },
+        {
+          s: produce({ blob: '' }, (d) => {
+            d.blob = 'x'.repeat(20_000);
+          }),
+        },
         body
       ),
       body
@@ -236,10 +238,9 @@ describe('workflow/state values stored by reference', () => {
     for (let i = 0; i < 12; i++) {
       const out = write(
         {
-          s: produce(
-            value as { blob: string },
-            (d) => void (d.blob = String(i).repeat(20_000))
-          ),
+          s: produce(value as { blob: string }, (d) => {
+            d.blob = String(i).repeat(20_000);
+          }),
         },
         body
       );
@@ -295,17 +296,20 @@ describe('workflow/state values stored by reference', () => {
       body
     ).s;
     const first = write(
-      { s: produce(v0 as { items: unknown[] }, (d) => void d.items.push(1)) },
+      {
+        s: produce(v0 as { items: unknown[] }, (d) => {
+          d.items.push(1);
+        }),
+      },
       body
     );
     const v1 = read(first, body).s;
     const at = new Date('2026-11-03T00:00:00Z');
     const second = write(
       {
-        s: produce(
-          v1 as { items: unknown[] },
-          (d) => void d.items.push(at, new Uint8Array([1, 2]))
-        ),
+        s: produce(v1 as { items: unknown[] }, (d) => {
+          d.items.push(at, new Uint8Array([1, 2]));
+        }),
       },
       body
     );

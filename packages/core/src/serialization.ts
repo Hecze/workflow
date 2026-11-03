@@ -44,6 +44,7 @@ import {
   readAbortStreamPacket,
 } from './serialization/abort-stream.js';
 import * as clientModule from './serialization/client.js';
+import type { CodecOptions } from './serialization/codec.js';
 import {
   type CompressionMode,
   type CompressionStats,
@@ -93,14 +94,13 @@ import {
   getStepFunctionReducer,
   getStepFunctionReviver,
 } from './serialization/reducers/step-function.js';
+import { recoverStateContext } from './serialization/state-recovery.js';
 import {
   bindStateContextData,
   StateContext,
   stateContextForData,
   stateContextForGlobal,
 } from './serialization/state-refs.js';
-import { recoverStateContext } from './serialization/state-recovery.js';
-import type { CodecOptions } from './serialization/codec.js';
 import * as stepModule from './serialization/step.js';
 import {
   type FormatPrefix,

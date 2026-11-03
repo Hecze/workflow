@@ -32,6 +32,10 @@ import { getStepFunction } from '../../private.js';
 import type { PayloadKey } from '../../serialization/encryption.js';
 import { formatSerializationError } from '../../serialization/errors.js';
 import {
+  type StateContext,
+  stateContextForData,
+} from '../../serialization/state-refs.js';
+import {
   cancelAbortReaders,
   dehydrateStepError,
   dehydrateStepReturnValue,
@@ -70,10 +74,6 @@ import {
   settleReleasedStepStreams,
 } from '../step-streams.js';
 import { isUnserializableStepInputPlaceholder } from '../unserializable-step.js';
-import {
-  type StateContext,
-  stateContextForData,
-} from '../../serialization/state-refs.js';
 import { safeWaitUntil } from '../wait-until.js';
 import {
   isOptimisticInlineStartEnabled,

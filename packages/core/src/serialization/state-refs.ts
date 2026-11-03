@@ -1,6 +1,5 @@
 import { globalSingleton } from '@workflow/utils';
 import { parse } from 'devalue';
-import { getCommonRevivers } from './reducers/common.js';
 import {
   applyStateOps,
   isPlainObject,
@@ -10,6 +9,7 @@ import {
   type StateOp,
   setLineage,
 } from '../state.js';
+import { getCommonRevivers } from './reducers/common.js';
 
 /**
  * Stores `workflow/state` values by reference (opt-in, `WORKFLOW_STATE_REFS=1`).
@@ -255,7 +255,7 @@ export class StateContext {
         captured.set(JSON.stringify(path), v);
         if (!this.strings.has(v)) this.strings.set(v, { id, path });
       } else if (Array.isArray(v)) {
-        v.forEach((item, i) => walk(item, [...path, i]));
+        for (let i = 0; i < v.length; i++) walk(v[i], [...path, i]);
       } else if (isPlainObject(v)) {
         for (const key of Object.keys(v)) walk(v[key], [...path, key]);
       }

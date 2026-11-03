@@ -1,9 +1,5 @@
 import type { Span } from '@opentelemetry/api';
 import {
-  markStateSource,
-  stateRefsEnabled,
-} from '../serialization/state-refs.js';
-import {
   EntityConflictError,
   HookConflictError,
   RUN_ERROR_CODES,
@@ -60,6 +56,10 @@ import {
   deriveRunKeyPair,
 } from '../sealed-box.js';
 import type { CompressionMode } from '../serialization/compression.js';
+import {
+  markStateSource,
+  stateRefsEnabled,
+} from '../serialization/state-refs.js';
 import {
   dehydrateDynamicWorkflowCode,
   dehydrateStepArguments,

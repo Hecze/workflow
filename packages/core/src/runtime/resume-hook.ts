@@ -1,9 +1,5 @@
 import type { Span } from '@opentelemetry/api';
 import {
-  markStateSource,
-  stateRefsEnabled,
-} from '../serialization/state-refs.js';
-import {
   ERROR_SLUGS,
   HookForceClaimedError,
   HookNotFoundError,
@@ -30,6 +26,10 @@ import { importKey } from '../encryption.js';
 import { runtimeLogger } from '../logger.js';
 import { decodeRunPublicKey } from '../sealed-box.js';
 import { deriveRunPayloadKeys } from '../serialization/encryption.js';
+import {
+  markStateSource,
+  stateRefsEnabled,
+} from '../serialization/state-refs.js';
 import {
   dehydrateStepReturnValue,
   hydrateStepArguments,
