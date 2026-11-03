@@ -261,6 +261,33 @@ describe('workflow/state values stored by reference', () => {
     ).toThrow(/Missing workflow state version/);
   });
 
+  it('recovers null-prototype dictionaries cold, as eve stores them', () => {
+    const body = new StateContext();
+    const entries = Object.assign(Object.create(null), {
+      'turn:1': { kind: 'turn' },
+    });
+    const first = write(
+      { s: produce({ context: { entries } }, () => {}) },
+      body
+    );
+    const v1 = read(first, body).s;
+    const second = write(
+      {
+        s: produce(
+          v1 as { context: { entries: Record<string, unknown> } },
+          (d) => {
+            d.context.entries['turn:2'] = { kind: 'turn' };
+          }
+        ),
+      },
+      body
+    );
+    const input = write({ s: read(second, body).s }, body);
+    const retried = read(input, cold(first, second)).s;
+    expect(Object.getPrototypeOf(retried.context.entries)).toBe(null);
+    expect(Object.keys(retried.context.entries)).toEqual(['turn:1', 'turn:2']);
+  });
+
   it('recovers dates and bytes, and refuses values only workflow code could rebuild', () => {
     const body = new StateContext();
     const v0 = read(

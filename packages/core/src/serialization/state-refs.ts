@@ -51,6 +51,35 @@ export class StateSourceRef {
 }
 
 const OPAQUE = Symbol.for('@workflow/core//state-refs-opaque');
+/**
+ * Tags devalue decodes itself, such as `null` for null-prototype objects.
+ * Recovery must leave them to devalue; only unknown custom types become
+ * placeholders.
+ */
+const DEVALUE_BUILTIN_TAGS = new Set([
+  'null',
+  'Object',
+  'Date',
+  'Set',
+  'Map',
+  'RegExp',
+  'BigInt',
+  'URL',
+  'URLSearchParams',
+  'ArrayBuffer',
+  'Int8Array',
+  'Uint8Array',
+  'Uint8ClampedArray',
+  'Int16Array',
+  'Uint16Array',
+  'Int32Array',
+  'Uint32Array',
+  'Float16Array',
+  'Float32Array',
+  'Float64Array',
+  'BigInt64Array',
+  'BigUint64Array',
+]);
 
 function deepFreeze(value: unknown): void {
   if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
@@ -314,11 +343,13 @@ export class StateContext {
         ? undefined
         : Object.hasOwn(common, key)
           ? common[key]
-          : key === STATE_REF_REDUCER
-            ? this.revive
-            : key === STATE_SOURCE_REDUCER
-              ? this.reviveSourceRef
-              : opaque;
+          : DEVALUE_BUILTIN_TAGS.has(key)
+            ? undefined
+            : key === STATE_REF_REDUCER
+              ? this.revive
+              : key === STATE_SOURCE_REDUCER
+                ? this.reviveSourceRef
+                : opaque;
     const revivers = new Proxy({} as Record<string, (v: any) => unknown>, {
       get: (_t, key) => pick(key),
       has: (_t, key) => pick(key) !== undefined,
