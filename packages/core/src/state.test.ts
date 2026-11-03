@@ -232,6 +232,19 @@ describe('key order', () => {
     expect(rebuilt.state).toEqual({ y: 2, x: 5 });
   });
 
+  it('keeps key order inside items an append treats as unchanged', () => {
+    const base = { list: [{ a: 1, b: 2 }] };
+    const next = produce(base, () => ({
+      list: [
+        { b: 2, a: 1 },
+        { a: 3, b: 4 },
+      ],
+    }));
+    const rebuilt = applyStateOps(base, diffState(base, next)) as typeof base;
+    expect(Object.keys(rebuilt.list[0] as object)).toEqual(['b', 'a']);
+    expect(rebuilt.list).toHaveLength(2);
+  });
+
   it('records nothing extra when keys are only added at the end', () => {
     const base = { a: 1 };
     const next = produce(base, (draft: any) => {

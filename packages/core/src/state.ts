@@ -121,10 +121,12 @@ export function sameState(a: unknown, b: unknown): boolean {
   }
   if (isPlainObject(a) && isPlainObject(b)) {
     const keys = Object.keys(a);
+    const otherKeys = Object.keys(b);
+    // Same keys in the same order: code may iterate objects in insertion order.
     return (
       Object.getPrototypeOf(a) === Object.getPrototypeOf(b) &&
-      keys.length === Object.keys(b).length &&
-      keys.every((k) => Object.hasOwn(b, k) && sameState(a[k], b[k]))
+      keys.length === otherKeys.length &&
+      keys.every((k, i) => otherKeys[i] === k && sameState(a[k], b[k]))
     );
   }
   return false;
