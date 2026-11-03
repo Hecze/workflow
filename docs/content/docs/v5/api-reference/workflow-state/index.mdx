@@ -86,7 +86,7 @@ You don't need it for small values or values that are replaced wholesale each st
 
 Set `WORKFLOW_STATE_REFS=1` where workflows run (see [Runtime tuning](/docs/configuration/runtime-tuning#workflow_state_refs)). Without it, `produce()` still works and values are stored in full, so you can adopt the API first and enable references later. Turning it off again is safe: stored references stay readable.
 
-References only point inside the same run. A value passed to another run, for example through `start()`, is stored in full.
+References only point inside the same run. Values that leave it are stored in full: run inputs, including values passed to another run through `start()`, and workflow return values, so `run.returnValue` reads them as usual. The dashboard and CLI show references and changes as placeholders.
 
 ## Rules
 
