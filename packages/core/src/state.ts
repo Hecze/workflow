@@ -112,8 +112,13 @@ export function sameState(a: unknown, b: unknown): boolean {
     return a.getTime() === b.getTime();
   if (a instanceof Uint8Array && b instanceof Uint8Array)
     return a.length === b.length && a.every((byte, i) => byte === b[i]);
-  if (Array.isArray(a) && Array.isArray(b))
-    return a.length === b.length && a.every((v, i) => sameState(v, b[i]));
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    // A plain loop, not every(): holes must match holes.
+    for (let i = 0; i < a.length; i++)
+      if (i in a !== i in b || !sameState(a[i], b[i])) return false;
+    return true;
+  }
   if (isPlainObject(a) && isPlainObject(b)) {
     const keys = Object.keys(a);
     return (

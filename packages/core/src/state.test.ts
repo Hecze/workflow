@@ -183,6 +183,17 @@ describe('sparse arrays', () => {
     expect(0 in rebuilt.values).toBe(true);
   });
 
+  it('records a replacement that fills a hole', () => {
+    const base = { values: new Array<string>(2) };
+    const filled = new Array<string>(2);
+    filled[0] = 'hello';
+    const next = produce(base, () => ({ values: filled }));
+    expect(next).not.toBe(base);
+    expect(diffState(base, next)).toEqual([
+      { op: 'set', path: ['values'], value: filled },
+    ]);
+  });
+
   it('keeps holes when appending after them', () => {
     const values: unknown[] = [1];
     values[2] = 3;
