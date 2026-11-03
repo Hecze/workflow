@@ -52,6 +52,7 @@ The runtime reads these variables where workflows execute. Set them on the deplo
 - Default: unset (off)
 - Set to `1` to store [`workflow/state`](/docs/api-reference/workflow-state) values by reference: a step input that carries a `produce()` result stores a reference to its version, and a step output stores only its change. Values not made by `produce()` are unaffected.
 - Experimental. The setting controls writing only: stored references are always readable, so turning it off is safe. Runs keep reading what they stored, and new steps store values in full again.
+- Not supported with `WORKFLOW_VM=quickjs`. There the setting has no effect and values are stored in full.
 
 ## Replay and queue delivery
 
