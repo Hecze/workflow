@@ -90,7 +90,22 @@ References only point inside the same run. Values that leave it are stored in fu
 
 ## Inspecting stored state
 
-A step input that holds a reference, and a step output that holds a change, can only be rebuilt from the run's earlier records. Workflow does that during replay, so your code always receives whole values. Tools that read one payload on its own, such as the dashboard, the CLI and custom inspection code using [`hydrateData()`](/docs/api-reference/workflow-observability/hydrate-data) with `observabilityRevivers`, show references and changes as placeholders. Hook payloads, run inputs and workflow return values are always stored whole and display normally.
+A step input that holds a reference, and a step output that holds a change, can only be rebuilt from the run's earlier records. Workflow does that during replay, so your code always receives whole values. Hook payloads, run inputs and workflow return values are always stored whole.
+
+To show the actual values in an inspection tool, create a resolver for the run with `createStateResolver()` from `workflow/observability`. Feed it the run's persisted payloads once, in event-log order, and merge its revivers over the ones you hydrate with:
+
+```typescript lineNumbers
+import { createStateResolver, hydrateData, observabilityRevivers } from "workflow/observability";
+declare const runPayloads: unknown[]; // @setup
+declare const stepInput: unknown; // @setup
+
+const resolver = createStateResolver(observabilityRevivers);
+for (const payload of runPayloads) resolver.add(payload); // run input, hook payloads, step outputs
+
+const input = hydrateData(stepInput, { ...observabilityRevivers, ...resolver.revivers });
+```
+
+Pass decrypted payloads. Keep one resolver per run and reuse it across inspections. Without one, references and changes display as placeholders.
 
 ## Rules
 
