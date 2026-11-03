@@ -1,7 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { lineageOf, produce } from '../state.js';
 import { decodeFormatPrefix } from './format.js';
-import { markStateSource, StateContext } from './state-refs.js';
+import {
+  dehydrateWorkflowArguments,
+  dehydrateWorkflowReturnValue,
+  hydrateWorkflowArguments,
+  hydrateWorkflowReturnValue,
+} from '../serialization.js';
+import {
+  bindStateContext,
+  markStateSource,
+  StateContext,
+} from './state-refs.js';
 import * as workflow from './workflow.js';
 
 type Message = { role: string; content: string };
@@ -154,6 +164,63 @@ describe('workflow/state values stored by reference', () => {
     expect(
       read(output2, cold(output1, hook)).session.history.at(-1).content
     ).toBe(message);
+  });
+
+  it('resolves hook strings to what was stored even if the revived payload is edited', () => {
+    const { body, output1 } = session();
+    const message = 'Weather in Oslo for the next three days, please. '.repeat(
+      4
+    );
+    const payload = { message };
+    markStateSource(payload, 'hook:2');
+    const hook = write(payload, new StateContext());
+    const replay = new StateContext();
+    const revived = read(hook, replay);
+    const v1 = read(output1, replay).session;
+    const output2 = write(
+      {
+        session: produce(
+          v1 as Session,
+          (d) => void d.history.push({ role: 'user', content: message })
+        ),
+      },
+      replay
+    );
+    revived.message = 'edited after it arrived';
+    expect(read(output2, replay).session.history.at(-1).content).toBe(message);
+  });
+
+  it('writes run arguments and return values whole so they read without the run log', async () => {
+    const { body, output1 } = session();
+    const v1 = read(output1, body).session;
+    const global = globalThis as Record<string, any>;
+    bindStateContext(global, body);
+    try {
+      const returned = await dehydrateWorkflowReturnValue(
+        { session: v1 },
+        'wrun_1',
+        undefined,
+        global
+      );
+      expect(text(returned as Uint8Array)).not.toContain('"ref"');
+      expect(
+        (await hydrateWorkflowReturnValue(returned, 'wrun_1', undefined))
+          .session
+      ).toStrictEqual(v1);
+      const args = await dehydrateWorkflowArguments(
+        [v1],
+        'wrun_2',
+        undefined,
+        [],
+        global
+      );
+      expect(text(args as Uint8Array)).not.toContain('"ref"');
+      expect(
+        (await hydrateWorkflowArguments(args, 'wrun_2', undefined))[0]
+      ).toStrictEqual(v1);
+    } finally {
+      bindStateContext(global, new StateContext());
+    }
   });
 
   it('stores a value whole again once its overwrites outgrow it', () => {

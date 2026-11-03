@@ -682,6 +682,24 @@ export const observabilityRevivers: Revivers = {
     `<workflow:${value.workflowId}>`,
   Instance: serializedInstanceToRef,
   Class: serializedClassToString,
+  // `workflow/state` records (WORKFLOW_STATE_REFS=1). Hook payloads and run
+  // inputs are wrapped as reference sources and whole values are stored as
+  // such; both display as their value. A reference or a change needs the run's
+  // log to rebuild, so it displays as what it points to.
+  StateRefV1: (record: {
+    kind: string;
+    value?: unknown;
+    version?: string;
+    base?: string;
+    ops?: unknown;
+  }) =>
+    record.kind === 'source' || record.kind === 'full'
+      ? record.value
+      : record.kind === 'patch'
+        ? { [`<workflow/state change from ${record.base}>`]: record.ops }
+        : `<workflow/state ${record.version}>`,
+  StateSrcV1: ([id, path]: [string, (string | number)[]]) =>
+    `<same as ${id}${path.length ? `.${path.join('.')}` : ''}>`,
 };
 
 // ---------------------------------------------------------------------------

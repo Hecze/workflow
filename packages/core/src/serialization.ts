@@ -95,7 +95,7 @@ import {
 } from './serialization/reducers/step-function.js';
 import {
   bindStateContextData,
-  type StateContext,
+  StateContext,
   stateContextForData,
   stateContextForGlobal,
 } from './serialization/state-refs.js';
@@ -3977,6 +3977,10 @@ export async function dehydrateWorkflowArguments(
     const compressionStats: CompressionStats = {};
     const result = await clientModule.serialize(value, key, {
       global,
+      // A run's input is read outside this run's log (by the new run before it
+      // replays, and by the dashboard), so `workflow/state` values are written
+      // whole rather than as references to versions only this run holds.
+      stateContext: new StateContext(),
       extraReducers: getStreamAndRequestReducers(
         getExternalReducers(
           global,
@@ -4055,6 +4059,9 @@ export async function dehydrateWorkflowReturnValue(
     };
     const result = await stepModule.serialize(value, key, {
       global,
+      // Read by `run.returnValue` without this run's log, so `workflow/state`
+      // values are written whole rather than as references.
+      stateContext: new StateContext(),
       extraReducers: getStreamAndRequestReducers(getWorkflowReducers(global)),
       compression,
       compressionStats,

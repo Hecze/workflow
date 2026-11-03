@@ -95,7 +95,12 @@ export function markStateSource(value: unknown, id: string): void {
 /** One invocation's view of the tracked values and sources in a run's log. */
 export class StateContext {
   private readonly versions = new Map<string, Version>();
-  private readonly sources = new Map<string, unknown>();
+  /**
+   * Each source's referenceable strings by path, captured when the source is
+   * first seen. Code may edit a revived hook payload or run input later; state
+   * changes must still resolve to the strings that were stored.
+   */
+  private readonly sources = new Map<string, Map<string, string>>();
   private readonly strings = new Map<string, SourceString>();
   readonly stats = {
     refs: 0,
@@ -212,12 +217,14 @@ export class StateContext {
 
   private addSource(id: string, value: unknown): void {
     if (this.sources.has(id)) return;
-    this.sources.set(id, value);
+    const captured = new Map<string, string>();
+    this.sources.set(id, captured);
     const walk = (v: unknown, path: (string | number)[]) => {
       if (path.length > MAX_PATH) return;
       if (typeof v === 'string') {
-        if (v.length >= SOURCE_STRING_MIN && !this.strings.has(v))
-          this.strings.set(v, { id, path });
+        if (v.length < SOURCE_STRING_MIN) return;
+        captured.set(JSON.stringify(path), v);
+        if (!this.strings.has(v)) this.strings.set(v, { id, path });
       } else if (Array.isArray(v)) {
         v.forEach((item, i) => walk(item, [...path, i]));
       } else if (isPlainObject(v)) {
@@ -258,24 +265,13 @@ export class StateContext {
 
   private resolveSourceRefs(v: unknown): unknown {
     if (v instanceof StateSourceRef) {
-      if (!this.sources.has(v.id))
+      const captured = this.sources.get(v.id);
+      if (captured === undefined)
         throw new Error(`Missing workflow state source ${v.id}`);
-      let at: unknown = this.sources.get(v.id);
-      if (v.path.length > MAX_PATH)
-        throw new Error('Invalid workflow state source path');
-      for (const key of v.path) {
-        if (
-          key === '__proto__' ||
-          at === null ||
-          typeof at !== 'object' ||
-          !Object.hasOwn(at, key)
-        )
-          throw new Error('Missing workflow state source field');
-        at = (at as Dict)[key as string];
-      }
-      if (typeof at !== 'string')
-        throw new Error('Workflow state source is not a string');
-      return at;
+      const value = captured.get(JSON.stringify(v.path));
+      if (value === undefined)
+        throw new Error('Missing workflow state source field');
+      return value;
     }
     if (Array.isArray(v)) return v.map((x) => this.resolveSourceRefs(x));
     if (isPlainObject(v)) {
