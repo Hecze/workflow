@@ -95,6 +95,18 @@ describe('workflow/state values stored by reference', () => {
     ).toEqual(['hello', 'hi', 'next', 'ok']);
   });
 
+  it('stores a whole-value replacement (such as clearing a history) so replay rebuilds it', () => {
+    const { body, output1 } = session();
+    const v1 = read(output1, body).session as Session;
+    const cleared = produce(v1.history, () => []);
+    const output2 = write({ history: cleared }, body);
+    expect(text(output2)).toContain('"full"');
+    const replay = new StateContext();
+    read(output1, replay);
+    expect(read(output2, replay).history).toEqual([]);
+    expect(read(output2, cold(output1, output2)).history).toEqual([]);
+  });
+
   it('keeps step inputs the same size as the history grows', () => {
     const { body, output1 } = session();
     let value = read(output1, body).session;

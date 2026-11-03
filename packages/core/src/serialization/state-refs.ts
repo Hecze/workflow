@@ -189,7 +189,17 @@ export class StateContext {
     const snapshot =
       lineage.bytesSinceFull > SNAPSHOT_MIN_BYTES &&
       lineage.bytesSinceFull > 2 * jsonBytes(value);
-    if (base?.logId === logId && lineage.ops !== undefined && !snapshot) {
+    // A change that replaces the whole value is stored as that value: its
+    // `set` would otherwise hold the value itself, which devalue would encode
+    // as a reference back to this record.
+    const replacesWhole =
+      lineage.ops?.some((op) => op.path.length === 0) ?? false;
+    if (
+      base?.logId === logId &&
+      lineage.ops !== undefined &&
+      !snapshot &&
+      !replacesWhole
+    ) {
       this.versions.set(version, {
         logId,
         value,
