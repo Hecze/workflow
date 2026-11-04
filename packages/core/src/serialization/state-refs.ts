@@ -19,6 +19,15 @@ import { getCommonRevivers } from './reducers/common.js';
  * base version is, and whole otherwise. Long strings that already arrived in a
  * hook payload or the run input are written as references to that payload.
  * Readers rebuild values from the run's own log, so nothing refers outside it.
+ *
+ * Only versions a reader of the log can see are referenceable: step outputs,
+ * and the hook payloads and run input registered with `addSource`. Step inputs
+ * are never read back (replay and recovery skip them), so the versions a step
+ * input carries are not remembered on either side.
+ *
+ * Hook payloads and run inputs keep their usual format. Each reader knows the
+ * event a payload came from and registers its strings under that event's id
+ * (see `stateSourceId`), so a runtime without this module reads them as before.
  */
 
 export const STATE_REF_REDUCER = 'StateRefV1';
@@ -36,6 +45,30 @@ interface Version {
   readonly logId: string;
   readonly value: unknown;
   readonly bytesSinceFull: number;
+  /** The value's measured size, and `bytesSinceFull` when it was measured. */
+  readonly measured?: Measured;
+}
+interface Measured {
+  readonly bytes: number;
+  readonly at: number;
+}
+
+/**
+ * A record refers to a version, base or source this context has not seen: the
+ * log it was rebuilt from is missing what the writer saw.
+ */
+export class WorkflowStateMissingError extends Error {
+  override name = 'WorkflowStateMissingError';
+}
+
+/** The id a reader registers a payload's strings under (see `addSource`). */
+export function stateSourceId(
+  event: { eventType: string; eventId?: string } | 'run-input'
+): string | undefined {
+  if (event === 'run-input') return 'run';
+  return event.eventType === 'hook_received' && event.eventId
+    ? `hook:${event.eventId}`
+    : undefined;
 }
 interface SourceString {
   readonly id: string;
@@ -111,17 +144,6 @@ function checkedId(id: unknown, what: string): string {
   return id;
 }
 
-/** Marks a payload (a hook payload or run input) whose long strings later state may refer to. */
-const sourceMarks = globalSingleton(
-  '@workflow/core//state-ref-sources',
-  1,
-  () => new WeakMap<object, string>()
-);
-export function markStateSource(value: unknown, id: string): void {
-  if (value !== null && typeof value === 'object')
-    sourceMarks.set(value, checkedId(id, 'state source id'));
-}
-
 /** One invocation's view of the tracked values and sources in a run's log. */
 export class StateContext {
   private readonly versions = new Map<string, Version>();
@@ -138,23 +160,29 @@ export class StateContext {
     full: 0,
     sourceRefs: 0,
     recoveryFetches: 0,
+    recoveryBytes: 0,
+    recoveryMs: 0,
   };
 
-  /** devalue reducer: returns a record for tracked values and marked sources, `false` otherwise. */
-  reduce = (value: unknown): unknown => {
+  /** devalue reducer: returns a record for tracked values, `false` otherwise. */
+  reduce = (value: unknown): unknown => this.reduceValue(value, true);
+
+  /**
+   * devalue reducer for a step input. Its versions are written like any
+   * other, but not remembered: no reader reads step inputs back, so a later
+   * payload must not refer to them.
+   */
+  reduceInput = (value: unknown): unknown => this.reduceValue(value, false);
+
+  private reduceValue(value: unknown, register: boolean): unknown {
     if (value === null || typeof value !== 'object') return false;
-    const sourceId = sourceMarks.get(value);
-    if (sourceId !== undefined) {
-      this.addSource(sourceId, value);
-      return { kind: 'source', id: sourceId, value: shallowCopy(value) };
-    }
     // Writing references is opt-in; reading them is always supported, so runs
     // that stored references stay readable after the setting is turned off.
     const lineage = lineageOf(value);
     return lineage === undefined || !stateRefsEnabled()
       ? false
-      : this.reduceTracked(value, lineage);
-  };
+      : this.reduceTracked(value, lineage, register);
+  }
 
   /** devalue reducer for the strings inside a state change that a source already holds. */
   reduceSourceRef = (value: unknown): unknown =>
@@ -166,20 +194,30 @@ export class StateContext {
   ]): StateSourceRef =>
     new StateSourceRef(checkedId(id, 'state source id'), path);
 
-  revive = (d: Dict): unknown => {
+  revive = (d: Dict): unknown => this.reviveRecord(d, true);
+
+  /** devalue reviver for a step input: rebuilds its values without remembering them (see `reduceInput`). */
+  reviveInput = (d: Dict): unknown => this.reviveRecord(d, false);
+
+  private reviveRecord(d: Dict, register: boolean): unknown {
     switch (d.kind) {
       case 'source':
+        // Written by earlier previews of this feature; still readable.
         return this.reviveSource(d);
       case 'ref':
       case 'patch':
       case 'full':
-        return this.reviveTracked(d);
+        return this.reviveTracked(d, register);
       default:
         throw new Error('Unknown workflow state record');
     }
-  };
+  }
 
-  private reduceTracked(value: unknown, lineage: StateLineage): unknown {
+  private reduceTracked(
+    value: unknown,
+    lineage: StateLineage,
+    register: boolean
+  ): unknown {
     const { logId, version } = lineage;
     if (this.versions.get(version)?.logId === logId) {
       this.stats.refs++;
@@ -187,9 +225,11 @@ export class StateContext {
     }
     const base =
       lineage.base === undefined ? undefined : this.versions.get(lineage.base);
-    const snapshot =
-      lineage.bytesSinceFull > SNAPSHOT_MIN_BYTES &&
-      lineage.bytesSinceFull > 2 * jsonBytes(value);
+    const { snapshot, measured } = this.snapshotRule(
+      value,
+      lineage.bytesSinceFull,
+      base?.logId === logId ? base.measured : undefined
+    );
     // A change that replaces the whole value is stored as that value: its
     // `set` would otherwise hold the value itself, which devalue would encode
     // as a reference back to this record.
@@ -202,11 +242,13 @@ export class StateContext {
       !snapshot &&
       !replacesWhole
     ) {
-      this.versions.set(version, {
-        logId,
-        value,
-        bytesSinceFull: lineage.bytesSinceFull,
-      });
+      if (register)
+        this.versions.set(version, {
+          logId,
+          value,
+          bytesSinceFull: lineage.bytesSinceFull,
+          measured,
+        });
       this.stats.patches++;
       return {
         kind: 'patch',
@@ -216,18 +258,52 @@ export class StateContext {
         ops: this.withSourceRefs(lineage.ops),
       };
     }
-    this.versions.set(version, { logId, value, bytesSinceFull: 0 });
+    if (register)
+      this.versions.set(version, {
+        logId,
+        value,
+        bytesSinceFull: 0,
+        measured: measured && { bytes: measured.bytes, at: 0 },
+      });
     this.stats.full++;
     return { kind: 'full', logId, version, value: shallowCopy(value) };
   }
 
-  private reviveTracked(d: Dict): unknown {
+  /**
+   * Whether to write the value whole: its changes since the last whole value
+   * exceed {@link SNAPSHOT_MIN_BYTES} and twice its size. Measuring the size
+   * serializes the whole value, so a measurement is reused while the changes
+   * since it cannot have shrunk the value enough for the rule to fire.
+   */
+  private snapshotRule(
+    value: unknown,
+    bytesSinceFull: number,
+    measured: Measured | undefined
+  ): { snapshot: boolean; measured: Measured | undefined } {
+    if (bytesSinceFull <= SNAPSHOT_MIN_BYTES)
+      return { snapshot: false, measured };
+    if (measured !== undefined && bytesSinceFull >= measured.at) {
+      // Each change moves the size by about its own bytes, so the value is
+      // at least this big; while the rule can't fire against that, skip it.
+      const atLeast = measured.bytes - (bytesSinceFull - measured.at);
+      if (bytesSinceFull <= 2 * atLeast) return { snapshot: false, measured };
+    }
+    const bytes = jsonBytes(value);
+    return {
+      snapshot: bytesSinceFull > 2 * bytes,
+      measured: { bytes, at: bytesSinceFull },
+    };
+  }
+
+  private reviveTracked(d: Dict, register: boolean): unknown {
     const logId = checkedId(d.logId, 'workflow state log');
     const version = checkedId(d.version, 'workflow state version');
     const known = this.versions.get(version);
     if (d.kind === 'ref') {
       if (known?.logId !== logId)
-        throw new Error(`Missing workflow state version ${logId}:${version}`);
+        throw new WorkflowStateMissingError(
+          `Missing workflow state version ${logId}:${version}`
+        );
       return known.value;
     }
     if (known !== undefined) return known.value;
@@ -239,7 +315,7 @@ export class StateContext {
       const base =
         typeof d.base === 'string' ? this.versions.get(d.base) : undefined;
       if (base?.logId !== logId)
-        throw new Error(
+        throw new WorkflowStateMissingError(
           `Missing workflow state base ${logId}:${String(d.base)}`
         );
       if (!Array.isArray(d.ops))
@@ -250,13 +326,19 @@ export class StateContext {
     }
     this.assertKnownTypes(value);
     deepFreeze(value);
-    this.versions.set(version, { logId, value, bytesSinceFull });
+    if (register) this.versions.set(version, { logId, value, bytesSinceFull });
     if (value !== null && typeof value === 'object')
       setLineage(value, { logId, version, bytesSinceFull });
     return value;
   }
 
-  private addSource(id: string, value: unknown): void {
+  /**
+   * Registers the long strings of a payload later state may refer to: a hook
+   * payload or the run input, as read, under its `stateSourceId`. Every
+   * reader of the log registers the same payloads under the same ids.
+   */
+  addSource(id: string, value: unknown): void {
+    checkedId(id, 'state source id');
     if (this.sources.has(id)) return;
     const captured = new Map<string, string>();
     this.sources.set(id, captured);
@@ -308,10 +390,14 @@ export class StateContext {
     if (v instanceof StateSourceRef) {
       const captured = this.sources.get(v.id);
       if (captured === undefined)
-        throw new Error(`Missing workflow state source ${v.id}`);
+        throw new WorkflowStateMissingError(
+          `Missing workflow state source ${v.id}`
+        );
       const value = captured.get(JSON.stringify(v.path));
       if (value === undefined)
-        throw new Error('Missing workflow state source field');
+        throw new WorkflowStateMissingError(
+          'Missing workflow state source field'
+        );
       return value;
     }
     if (Array.isArray(v)) return v.map((x) => this.resolveSourceRefs(x));
@@ -340,9 +426,9 @@ export class StateContext {
    * the format prefix) without running workflow code. Other custom types become
    * placeholders, which fail loudly if they end up inside tracked state.
    */
-  ingest(payload: Uint8Array): void {
+  ingest(payload: Uint8Array, source?: string): void {
     const text = new TextDecoder().decode(payload);
-    if (!text.includes(STATE_REF_REDUCER)) return;
+    if (source === undefined && !text.includes(STATE_REF_REDUCER)) return;
     const opaque = () => ({ [OPAQUE]: true });
     // Workflow's own encodings of Date, Map, typed arrays and the like revive as
     // usual; anything that needs workflow code (streams, class instances) does not.
@@ -372,7 +458,27 @@ export class StateContext {
           : { value, enumerable: true, configurable: true };
       },
     });
-    parse(text, revivers);
+    const value = parse(text, revivers);
+    if (source !== undefined) this.addSource(source, value);
+  }
+
+  /**
+   * Whether reading this decoded payload needs records this context lacks.
+   * Reads it like `ingest`, into a scratch copy, so nothing is remembered.
+   */
+  needsRecovery(payload: Uint8Array): boolean {
+    const text = new TextDecoder().decode(payload);
+    if (!text.includes(STATE_REF_REDUCER)) return false;
+    const scratch = new StateContext();
+    for (const [id, version] of this.versions)
+      scratch.versions.set(id, version);
+    for (const [id, strings] of this.sources) scratch.sources.set(id, strings);
+    try {
+      scratch.ingest(payload);
+      return false;
+    } catch (error) {
+      return error instanceof WorkflowStateMissingError;
+    }
   }
 }
 
@@ -402,6 +508,15 @@ export function stateContextForGlobal(
 ): StateContext | undefined {
   return bindings.globals.get(global);
 }
+/** Registers a payload replay just read with the session's context (see `addSource`). */
+export function registerStateSource(
+  global: object,
+  source: string | undefined,
+  value: unknown
+): void {
+  if (source !== undefined)
+    bindings.globals.get(global)?.addSource(source, value);
+}
 export function bindStateContextData(
   data: unknown,
   context: StateContext | undefined
@@ -413,4 +528,46 @@ export function stateContextForData(data: unknown): StateContext | undefined {
   return data !== null && typeof data === 'object'
     ? bindings.data.get(data)
     : undefined;
+}
+
+/** Span attributes for reading a step input: what rebuilding its state cost. */
+export function stateHydrateAttributes(
+  context: StateContext | undefined
+): Record<string, number> {
+  if (context === undefined) return {};
+  const { recoveryFetches, recoveryBytes, recoveryMs } = context.stats;
+  return {
+    'workflow.state_refs.recovery_fetches': recoveryFetches,
+    'workflow.state_refs.recovery_bytes': recoveryBytes,
+    'workflow.state_refs.recovery_ms': recoveryMs,
+  };
+}
+
+type WriteCounts = Pick<
+  StateContext['stats'],
+  'refs' | 'patches' | 'full' | 'sourceRefs'
+>;
+
+/** The context's write counts so far, to diff against after one write. */
+export function stateWriteCounts(
+  context: StateContext | undefined
+): WriteCounts | undefined {
+  if (context === undefined) return undefined;
+  const { refs, patches, full, sourceRefs } = context.stats;
+  return { refs, patches, full, sourceRefs };
+}
+
+/** Span attributes for writing a step output: the records it was stored as. */
+export function stateDehydrateAttributes(
+  context: StateContext | undefined,
+  before: WriteCounts | undefined
+): Record<string, number> {
+  const after = stateWriteCounts(context);
+  if (after === undefined || before === undefined) return {};
+  return {
+    'workflow.state_refs.refs': after.refs - before.refs,
+    'workflow.state_refs.patches': after.patches - before.patches,
+    'workflow.state_refs.full': after.full - before.full,
+    'workflow.state_refs.source_refs': after.sourceRefs - before.sourceRefs,
+  };
 }

@@ -1,5 +1,5 @@
 import { globalSingleton } from '@workflow/utils';
-import { Immer } from 'immer';
+import { freeze, Immer } from 'immer';
 
 /**
  * Experimental: immutable state updated with an immer-style `produce`.
@@ -221,8 +221,9 @@ export function produce<T>(
     return next;
   const ops = diffState(base, next);
   // A recipe that returns a rebuilt copy with the same data changed nothing.
+  // Like immer, the result is still frozen, so freeze the base it returns.
   if (ops.length === 0 && base !== null && typeof base === 'object')
-    return base as Immutable<T>;
+    return freeze(base, true) as Immutable<T>;
   const from = lineageOf(base);
   setLineage(next as object, {
     logId: from?.logId ?? newId(),

@@ -50,6 +50,12 @@ export interface CodecOptions {
   stateContext?: import('./state-refs.js').StateContext;
 
   /**
+   * The payload is a step input. Its `workflow/state` versions are written and
+   * read without being remembered, because no reader reads step inputs back.
+   */
+  stateInput?: boolean;
+
+  /**
    * Rebuilds a state context from the run's log when a step input refers to
    * versions this invocation did not replay.
    */

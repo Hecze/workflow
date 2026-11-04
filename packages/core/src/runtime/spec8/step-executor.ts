@@ -31,9 +31,13 @@ import { runtimeLogger, stepLogger } from '../../logger.js';
 import { getStepFunction } from '../../private.js';
 import type { PayloadKey } from '../../serialization/encryption.js';
 import { formatSerializationError } from '../../serialization/errors.js';
+import { WorkflowStateRecoveryError } from '../../serialization/state-recovery.js';
 import {
   type StateContext,
   stateContextForData,
+  stateDehydrateAttributes,
+  stateHydrateAttributes,
+  stateWriteCounts,
 } from '../../serialization/state-refs.js';
 import {
   cancelAbortReaders,
@@ -999,12 +1003,8 @@ export async function executeStep(
           );
           stateContext ??= stateContextForData(hydrated);
           const durationMs = Date.now() - startTime;
-          if (stateContext)
-            hydrateSpan?.setAttributes({
-              'workflow.state_refs.recovery_fetches':
-                stateContext.stats.recoveryFetches,
-            });
           hydrateSpan?.setAttributes({
+            ...stateHydrateAttributes(stateContext),
             ...Attribute.StepArgumentsCount(hydrated.args.length),
             ...Attribute.QueueDeserializeTimeMs(durationMs),
           });
@@ -1210,6 +1210,7 @@ export async function executeStep(
 
       result = await trace('step.dehydrate', {}, async (dehydrateSpan) => {
         const startTime = Date.now();
+        const stateBefore = stateWriteCounts(stateContext);
         const dehydrated = await dehydrateStepReturnValue(
           result,
           workflowRunId,
@@ -1229,6 +1230,7 @@ export async function executeStep(
         );
         const durationMs = Date.now() - startTime;
         dehydrateSpan?.setAttributes({
+          ...stateDehydrateAttributes(stateContext, stateBefore),
           ...Attribute.QueueSerializeTimeMs(durationMs),
           ...Attribute.StepResultType(typeof dehydrated),
         });
@@ -1310,6 +1312,9 @@ export async function executeStep(
         await Promise.all(preCompletionOps).catch(() => {});
       }
     } catch (err: unknown) {
+      // The run's log could not be read to rebuild this step's workflow/state
+      // input: retry the delivery, not the user's step (its body has not run).
+      if (WorkflowStateRecoveryError.is(err)) throw err;
       // Optimistic start: the body threw before `step_started` was confirmed.
       // Reconcile first: if we lost the create-claim (or the run is
       // gone/throttled) the body error is moot; discard it and don't write a

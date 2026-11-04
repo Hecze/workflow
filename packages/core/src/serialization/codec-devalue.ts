@@ -155,7 +155,9 @@ export const devalueCodec: Codec = {
     // Where workflow code must run (getters, proxies, custom serializers),
     // the execution is recorded into `options.guestCodeStats`.
     const state = stateContextFor(options);
-    reducers[STATE_REF_REDUCER] = state.reduce;
+    reducers[STATE_REF_REDUCER] = options?.stateInput
+      ? state.reduceInput
+      : state.reduce;
     reducers[STATE_SOURCE_REDUCER] = state.reduceSourceRef;
     const str = withGuestCodeStats(options?.guestCodeStats, () =>
       stringify(value, reducers, { operations: hardenedStringifyOperations })
@@ -174,7 +176,9 @@ export const devalueCodec: Codec = {
       options?.extraRevivers
     );
     const state = stateContextFor(options);
-    revivers[STATE_REF_REDUCER] = state.revive;
+    revivers[STATE_REF_REDUCER] = options?.stateInput
+      ? state.reviveInput
+      : state.revive;
     revivers[STATE_SOURCE_REDUCER] = state.reviveSourceRef;
     const str = decoder.decode(data);
     return parse(str, revivers, parseOptions);

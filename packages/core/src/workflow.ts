@@ -35,7 +35,12 @@ import { runIdCreatedAt } from './runtime/run-id-time.js';
 import type { RunStartHook } from './runtime/start-hook-binding.js';
 import { createSeededNanoid } from './seeded-nanoid.js';
 import type { PayloadKey } from './serialization/encryption.js';
-import { bindStateContext, StateContext } from './serialization/state-refs.js';
+import {
+  bindStateContext,
+  registerStateSource,
+  StateContext,
+  stateSourceId,
+} from './serialization/state-refs.js';
 import {
   dehydrateWorkflowReturnValue,
   hydrateWorkflowArguments,
@@ -1429,7 +1434,7 @@ async function createWorkflowSessionInner(
     args = await trace('workflow.input.hydrate', async () => {
       const prepared =
         await replayPayloadCache.prepareWorkflowInput(workflowRun);
-      return hydrateWorkflowArguments(
+      const hydrated = await hydrateWorkflowArguments(
         workflowRun.input,
         workflowRun.runId,
         encryptionKey,
@@ -1437,6 +1442,9 @@ async function createWorkflowSessionInner(
         {},
         prepared
       );
+      // Later state changes may refer to the input's strings.
+      registerStateSource(vmGlobalThis, stateSourceId('run-input'), hydrated);
+      return hydrated;
     });
   });
   await workflowContext.promiseQueue;

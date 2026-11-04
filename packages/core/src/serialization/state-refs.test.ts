@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { parse } from 'devalue';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   dehydrateWorkflowArguments,
   dehydrateWorkflowReturnValue,
@@ -9,8 +10,9 @@ import { lineageOf, produce } from '../state.js';
 import { decodeFormatPrefix } from './format.js';
 import {
   bindStateContext,
-  markStateSource,
+  STATE_REF_REDUCER,
   StateContext,
+  stateSourceId,
 } from './state-refs.js';
 import * as workflow from './workflow.js';
 
@@ -179,16 +181,23 @@ describe('workflow/state values stored by reference', () => {
     ).toStrictEqual(replayed);
   });
 
-  it('refers to long strings a hook payload already stores instead of storing them again', () => {
+  it('refers to long strings a hook payload already stores, without changing the payload format', () => {
     const { body, output1 } = session();
     const message = 'Weather in Oslo for the next three days, please. '.repeat(
       4
     );
-    const payload = { message };
-    markStateSource(payload, 'hook:1');
-    const hook = write(payload, new StateContext());
-    expect(text(hook)).toContain('"source"');
-    read(hook, body);
+    const hook = write({ message }, new StateContext());
+    // A runtime without workflow/state support reads the payload as before.
+    expect(text(hook)).not.toContain(STATE_REF_REDUCER);
+    expect(parse(text(decodeFormatPrefix(hook).payload as any))).toStrictEqual({
+      message,
+    });
+    // Each reader registers the payload under its event's id.
+    const source = stateSourceId({
+      eventType: 'hook_received',
+      eventId: 'evnt_1',
+    }) as string;
+    body.addSource(source, read(hook, body));
 
     const v1 = read(output1, body).session;
     const s2 = produce(v1 as Session, (draft) => {
@@ -197,9 +206,11 @@ describe('workflow/state values stored by reference', () => {
     const output2 = write({ session: s2 }, body);
     expect(text(output2)).not.toContain('Weather in Oslo');
     expect(read(output2, body).session.history.at(-1).content).toBe(message);
-    expect(
-      read(output2, cold(output1, hook)).session.history.at(-1).content
-    ).toBe(message);
+    const recovered = cold(output1);
+    recovered.ingest(decodeFormatPrefix(hook).payload as Uint8Array, source);
+    expect(read(output2, recovered).session.history.at(-1).content).toBe(
+      message
+    );
   });
 
   it('resolves hook strings to what was stored even if the revived payload is edited', () => {
@@ -207,11 +218,10 @@ describe('workflow/state values stored by reference', () => {
     const message = 'Weather in Oslo for the next three days, please. '.repeat(
       4
     );
-    const payload = { message };
-    markStateSource(payload, 'hook:2');
-    const hook = write(payload, new StateContext());
+    const hook = write({ message }, new StateContext());
     const replay = new StateContext();
     const revived = read(hook, replay);
+    replay.addSource('hook:evnt_2', revived);
     const v1 = read(output1, replay).session;
     const output2 = write(
       {
@@ -223,6 +233,93 @@ describe('workflow/state values stored by reference', () => {
     );
     revived.message = 'edited after it arrived';
     expect(read(output2, replay).session.history.at(-1).content).toBe(message);
+  });
+
+  it('never refers to a version that only a step input carried', () => {
+    const { body, output1 } = session();
+    const v1 = read(output1, body).session as Session;
+    // A value made where its lineage is visible, but stored only in a step input.
+    const local = produce(v1, (d) => {
+      d.history.push({ role: 'user', content: 'only in an input' });
+    });
+    const inputA = workflow.serialize(
+      { session: local },
+      { stateContext: body, stateInput: true }
+    );
+    expect(text(inputA)).toContain('"patch"');
+    // A later input of the same value is not a reference to step A's input.
+    const inputB = workflow.serialize(
+      { session: local },
+      { stateContext: body, stateInput: true }
+    );
+    expect(text(inputB)).not.toContain('"ref"');
+    // A cold step B rebuilds it from what readers see: outputs only.
+    expect(
+      workflow.deserialize(inputB, {
+        stateContext: cold(output1),
+        stateInput: true,
+      })
+    ).toStrictEqual({ session: local });
+
+    // A step returning its input unchanged writes it whole, not a reference
+    // to a version only that input carried.
+    const step = new StateContext();
+    step.ingest(decodeFormatPrefix(output1).payload as Uint8Array);
+    const given = workflow.deserialize(inputA, {
+      stateContext: step,
+      stateInput: true,
+    }) as { session: Session };
+    const output = write(given, step);
+    expect(text(output)).not.toContain('"ref"');
+    expect(read(output, cold(output1))).toStrictEqual({ session: local });
+  });
+
+  it('measures a growing value only now and then to apply the snapshot rule', () => {
+    const replay = new StateContext();
+    let state = read(
+      write({ s: produce({ log: [] as string[] }, () => {}) }, replay),
+      replay
+    ).s as { log: string[] };
+    const measured: unknown[] = [];
+    const stringify = JSON.stringify;
+    const spy = vi.spyOn(JSON, 'stringify').mockImplementation(((
+      value: unknown,
+      ...rest: unknown[]
+    ) => {
+      if (value === state) measured.push(value);
+      return (stringify as any)(value, ...rest);
+    }) as typeof JSON.stringify);
+    try {
+      for (let i = 0; i < 300; i++) {
+        state = produce(state, (d) => {
+          d.log.push('x'.repeat(1024));
+        });
+        read(write({ s: state }, replay), replay);
+      }
+    } finally {
+      spy.mockRestore();
+    }
+    // An append-only value never meets the rule; it is not re-measured on
+    // every write once its changes pass the threshold.
+    expect(measured.length).toBeLessThan(20);
+  });
+
+  it('needs recovery only for records a fresh context lacks', () => {
+    const { body, output1 } = session();
+    const v1 = read(output1, body).session;
+    const whole = write({ session: v1 }, new StateContext());
+    expect(text(whole)).toContain(STATE_REF_REDUCER);
+    expect(
+      new StateContext().needsRecovery(
+        decodeFormatPrefix(whole).payload as Uint8Array
+      )
+    ).toBe(false);
+    const ref = write({ session: v1 }, body);
+    expect(
+      new StateContext().needsRecovery(
+        decodeFormatPrefix(ref).payload as Uint8Array
+      )
+    ).toBe(true);
   });
 
   it('writes run arguments and return values whole so they read without the run log', async () => {

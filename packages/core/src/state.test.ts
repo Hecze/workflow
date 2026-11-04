@@ -255,3 +255,13 @@ describe('key order', () => {
     ]);
   });
 });
+
+describe('frozen results', () => {
+  it('freezes the base it returns when a recipe returns an equal copy', () => {
+    const base = { a: { b: 1 } };
+    const next = produce(base, () => ({ a: { b: 1 } }));
+    expect(next).toBe(base);
+    expect(Object.isFrozen(next)).toBe(true);
+    expect(Object.isFrozen(next.a)).toBe(true);
+  });
+});

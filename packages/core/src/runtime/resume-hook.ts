@@ -27,10 +27,6 @@ import { runtimeLogger } from '../logger.js';
 import { decodeRunPublicKey } from '../sealed-box.js';
 import { deriveRunPayloadKeys } from '../serialization/encryption.js';
 import {
-  markStateSource,
-  stateRefsEnabled,
-} from '../serialization/state-refs.js';
-import {
   dehydrateStepReturnValue,
   hydrateStepArguments,
   type PayloadKey,
@@ -823,10 +819,6 @@ async function resumeHookAttempt<T = any>(
     const ops: Promise<any>[] = [];
     const readbackOps: Promise<any>[] = [];
     const v1Compat = isLegacySpecVersion(hook.specVersion);
-    // Later `workflow/state` changes may refer to this payload's strings
-    // instead of storing them again.
-    if (stateRefsEnabled())
-      markStateSource(payload, `hook:${globalThis.crypto.randomUUID()}`);
     const dehydratedPayload = await dehydrateStepReturnValue(
       payload,
       hook.runId,

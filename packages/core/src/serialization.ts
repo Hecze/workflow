@@ -4132,6 +4132,7 @@ export async function dehydrateStepArguments(
     };
     const result = await stepModule.serialize(value, key, {
       global,
+      stateInput: true,
       extraReducers: getStreamAndRequestReducers(getWorkflowReducers(global)),
       compression,
       compressionStats,
@@ -4170,6 +4171,7 @@ export async function hydrateStepArguments(
   const options: CodecOptions = {
     global,
     stateContext: stateContext ?? stateContextForData(value),
+    stateInput: true,
     recoverStateContext: (data: unknown) =>
       recoverStateContext(runId, key, data),
     extraRevivers: {
