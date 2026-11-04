@@ -268,9 +268,6 @@ export const getHeaders = (
 ): Headers => {
   const projectConfig = config?.projectConfig;
   const headers = new Headers(config?.headers);
-  // Payloads may carry `workflow/state` references (WORKFLOW_STATE_REFS=1).
-  if (process.env.WORKFLOW_STATE_REFS === '1')
-    headers.set('x-workflow-state-refs', 'v1');
   headers.set(
     'User-Agent',
     joinUserAgentProducts(getUserAgent(), headers.get('User-Agent'))
