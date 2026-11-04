@@ -352,6 +352,7 @@ async function decompressAsync(
   return out;
 }
 
+export { stateSourceId } from './serialization/state-refs.js';
 // ---------------------------------------------------------------------------
 export {
   createStateResolver,
