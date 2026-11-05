@@ -1,5 +1,19 @@
 # @workflow/core
 
+## 5.4.1
+
+### Patch Changes
+
+- [#5249](https://github.com/vercel/workflow/pull/5249) [`f292ef0`](https://github.com/vercel/workflow/commit/f292ef05cadbd5320298568050e39c96ef19f813) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Reading a started child's `run.returnValue` inside the parent workflow no longer starts waiting until the promise is awaited (its first `then`, `catch` or `finally`), so a parent that reads it early keeps spec 9 run-ahead for the steps before the await. The parent's child-run completion hook also stays open between waits instead of being disposed and registered again, and an open completion hook stops run-ahead only while something waits on it.
+
+- [#5248](https://github.com/vercel/workflow/pull/5248) [`f9b32b2`](https://github.com/vercel/workflow/commit/f9b32b250e2ddc81e52bebfd0628044c8e78a9cb) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Spec 9: a run that waits only on open hooks now lingers for `WORKFLOW_ORCHESTRATOR_HOOK_LINGER_MS` (default 5 seconds, never more than `WORKFLOW_ORCHESTRATOR_LINGER_MS`) instead of the full 30 seconds after each idle pass, so a long-lived approval or cancel hook beside a polling `sleep()` holds each wake for up to 5 seconds. A run with a background step still open keeps the full linger.
+
+- [#5248](https://github.com/vercel/workflow/pull/5248) [`f9b32b2`](https://github.com/vercel/workflow/commit/f9b32b250e2ddc81e52bebfd0628044c8e78a9cb) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Spec 9 node engine: keep the loaded event log's ids, highest slot and hole check in an incremental index, so an in-band write no longer rescans the whole log. On 2000 sequential inline steps in one delivery, time per step drops from about 18 ms to about 12 ms in the in-memory benchmark.
+
+- [#5248](https://github.com/vercel/workflow/pull/5248) [`f9b32b2`](https://github.com/vercel/workflow/commit/f9b32b250e2ddc81e52bebfd0628044c8e78a9cb) Thanks [@VaguelySerious](https://github.com/VaguelySerious)! - Spec 9 QuickJS orchestrator: hand off to the next delivery at the invocation's inline deadline, and create new steps as background steps within `WORKFLOW_INLINE_STEP_DEADLINE_MARGIN_MS` of it, as the node engine does. A delivery whose inline step ran past the deadline no longer starts the next inline step and runs into the function's maximum duration.
+- Updated dependencies []:
+  - @workflow/world-vercel@5.4.1
+
 ## 5.4.0
 
 ### Minor Changes
